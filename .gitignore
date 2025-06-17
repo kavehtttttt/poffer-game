@@ -1,0 +1,37 @@
+# Build directories
+build-*/
+build/
+
+# Qt Creator user/session files
+*.user
+*.pro.user
+*.pro.user.*
+*.autosave
+
+# Object and binary files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.app
+
+# MOC, UI, and QRC generated files
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Clangd cache and compile commands
+.qtc_clangd/
+compile_commands.json
+
+# Logs and temp files
+*.log
+*.tmp
+
+# System files
+.DS_Store
+Thumbs.db
+
