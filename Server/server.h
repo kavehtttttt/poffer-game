@@ -5,6 +5,9 @@
 #include <QTcpSocket>
 #include "chanells.h"
 #include <QList>
+#include<QJsonParseError>
+#include<QJsonDocument>
+#include<QJsonObject>
 
 class Server : public QTcpServer
 {
@@ -21,7 +24,7 @@ private:
     QList<chanells*> clients;
 
 private slots:
-    void handleMessage(QString msg);
+    void handleMessage(chanells* source, QString msg);
     void handleDisconnection();
 };
 

@@ -33,7 +33,7 @@ void chanells::communication()
             QString msg = QString::fromUtf8(data);
             qDebug() << "Received:" << msg;
 
-            emit messageReceived(msg);
+            emit messageReceived(this, msg);
         }
 
         if (socket->state() == QAbstractSocket::UnconnectedState)

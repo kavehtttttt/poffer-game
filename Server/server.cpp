@@ -8,7 +8,7 @@ Server::Server(QObject *parent)
 
 void Server::startServer()
 {
-    if (listen(QHostAddress::Any, 1234)) {
+    if (listen(QHostAddress::Any, 8080)) {
         qDebug() << "Server started on port 1234";
     } else {
         qDebug() << "Failed to start server";
@@ -32,10 +32,31 @@ void Server::incomingConnection(qintptr socketDescriptor)
     channel->start();
 }
 
-void Server::handleMessage(QString msg)
+void Server::handleMessage(chanells* source, QString msg)
 {
-    qDebug() << "Server received message:" << msg;
-    // in this place i will handle message
+    qDebug() << "From client:" << source << "->" << msg;
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError) {
+        qDebug() << "Invalid JSON format";
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+    QString type = obj["type"].toString();
+
+    if (type == "login") {
+       //I will make class name account to handle sign in and sign up getting just obj Json
+    }
+    else if (type == "signup") {
+        //I will make class name account to handle sign in and sign up getting just obj Json
+    }
+    else if (type == "start_game") {
+       //It will be done in game class
+    }
+    else {
+        qDebug() << "Unknown message type";
+    }
 }
 
 void Server::handleDisconnection()

@@ -24,7 +24,7 @@ private:
     void communication();
 
 signals:
-    void messageReceived(QString msg);
+    void messageReceived(chanells* source, QString msg);
     void disconnected();
 
 };
