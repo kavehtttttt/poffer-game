@@ -27,7 +27,7 @@ void chanells::communication()
 {
     while (running)
     {
-        if (socket->waitForReadyRead(100))  // با timeout
+        if (socket->waitForReadyRead(100))
         {
             QByteArray data = socket->readAll();
             QString msg = QString::fromUtf8(data);

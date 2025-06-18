@@ -1,37 +1,48 @@
-# Build directories
-build-*/
-build/
-
-# Qt Creator user/session files
+# Visual Studio workspace settings (local machine only)
+.vs/
+*.suo
 *.user
+*.sln.docstates
+
+# Build directories
+build/
+debug/
+release/
+
+# Qt & Visual Studio cache
+*.qmake.stash
 *.pro.user
-*.pro.user.*
 *.autosave
 
-# Object and binary files
+# CMake / qmake generated
+CMakeFiles/
+CMakeCache.txt
+Makefile
+*.moc
 *.o
 *.obj
-*.exe
-*.dll
-*.so
-*.a
-*.lib
-*.app
 
-# MOC, UI, and QRC generated files
-moc_*.cpp
-qrc_*.cpp
+# UI auto-generated headers (you can remove this if you want them in repo)
 ui_*.h
 
-# Clangd cache and compile commands
-.qtc_clangd/
-compile_commands.json
-
-# Logs and temp files
+# Binaries and intermediates
+*.exe
+*.dll
+*.pdb
+*.ipch
+*.tlog
 *.log
-*.tmp
+*.db
 
-# System files
-.DS_Store
-Thumbs.db
+# Crash dumps
+*.dmp
 
+# Visual Studio temporary project user files
+*.qtvscr
+*.vcxproj.user
+".vs/" 
+"build/" 
+"debug/" 
+"release/" 
+"*.qtvscr" 
+"*.vcxproj.user" 
