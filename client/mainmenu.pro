@@ -1,4 +1,5 @@
 QT       += core gui
+QT += network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -13,12 +14,14 @@ SOURCES += \
     login.cpp \
     main.cpp \
     mainmenu.cpp \
+    server.cpp \
     signup.cpp
 
 HEADERS += \
     ValidationException.h \
     login.h \
     mainmenu.h \
+    server.h \
     signup.h
 
 FORMS += \

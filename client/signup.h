@@ -2,6 +2,7 @@
 #define SIGNUP_H
 
 #include <QWidget>
+#include <QTcpSocket>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -13,7 +14,7 @@ class signup : public QWidget
     Q_OBJECT
 
 public:
-    explicit signup(QWidget *parent = nullptr);
+    explicit signup(QWidget *parent = nullptr, QTcpSocket *socket = nullptr);
     ~signup();
 
 private slots:
@@ -30,7 +31,9 @@ private:
     QLineEdit *phoneEdit;
     QPushButton *submitButton;
     QPushButton *backButton;
+    QLabel *connectionStatusLabel;
 
+    QTcpSocket *socket;
 };
 
 #endif // SIGNUP_H

@@ -5,17 +5,17 @@
 #include <QFont>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QLabel>
 #include <QPixmap>
 #include <QRegularExpression>
 #include <QCryptographicHash>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <QDebug>
-#include <QMessageBox>
 
-signup::signup(QWidget *parent)
-    : QWidget(parent)
+signup::signup(QWidget *parent, QTcpSocket *socket)
+    : QWidget(parent), socket(socket)
 {
-    setWindowTitle("At the beginning, create an account :)");
+    setWindowTitle("Create an account");
     setFixedSize(800, 600);
 
     QLabel *backgroundLabel = new QLabel(this);
@@ -29,7 +29,7 @@ signup::signup(QWidget *parent)
     outerLayout->addStretch();
 
     QFrame *formFrame = new QFrame(this);
-    formFrame->setFixedSize(400, 480);
+    formFrame->setFixedSize(400, 500);
     formFrame->setStyleSheet("QFrame { background-color: #e8d4b0; }");
 
     QVBoxLayout *formLayout = new QVBoxLayout(formFrame);
@@ -42,7 +42,7 @@ signup::signup(QWidget *parent)
     titleLabel->setStyleSheet("color: #4e3b2b;");
     formLayout->addWidget(titleLabel);
 
-    QFont inputFont("Georgia", 12);
+    QFont inputFont("Consolas", 12);  // ✅ به جای Georgia
     QStringList placeholders = {
         "First Name", "Last Name", "Email", "Password(at least 8 characters)", "Phone", "Username"
     };
@@ -58,14 +58,15 @@ signup::signup(QWidget *parent)
     for (int i = 0; i < edits.size(); ++i) {
         edits[i]->setPlaceholderText(placeholders[i]);
         edits[i]->setFont(inputFont);
-        edits[i]->setMinimumHeight(36);
+        edits[i]->setMinimumHeight(44);  // ✅ افزایش ارتفاع برای رفع مشکل
         edits[i]->setStyleSheet(
             "QLineEdit {"
             " background-color: #fff9f2;"
             " border: 2px solid #a67c52;"
             " border-radius: 10px;"
-            " padding: 8px;"
+            " padding: 4px;"  // ✅ padding مناسب برای جلوگیری از بریدگی
             " color: #3a2a1e;"
+            " font-size: 14px;"
             "}"
             "QLineEdit:focus {"
             " border-color: #d2a679;"
@@ -76,25 +77,51 @@ signup::signup(QWidget *parent)
         formLayout->addWidget(edits[i]);
     }
 
+
     submitButton = new QPushButton("Sign Up", this);
     submitButton->setFont(QFont("Georgia", 12, QFont::Bold));
     submitButton->setMinimumHeight(42);
     submitButton->setStyleSheet(
-        "QPushButton {"
-        " background-color: #814040;"
-        " color: #fceacb;"
-        " border: 2px solid #c2955d;"
-        " border-radius: 10px;"
-        " padding: 10px;"
-        " font-weight: bold;"
-        " letter-spacing: 1px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #a0522d;"
-        "}"
+        "QPushButton { background-color: #814040; color: #fceacb; border: 2px solid #c2955d; "
+        "border-radius: 10px; padding: 10px; font-weight: bold; letter-spacing: 1px; }"
+        "QPushButton:hover { background-color: #a0522d; }"
         );
     formLayout->addSpacing(5);
     formLayout->addWidget(submitButton);
+
+    // 🔵 برچسب وضعیت اتصال به سرور
+    connectionStatusLabel = new QLabel(this);
+    connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
+    connectionStatusLabel->setAlignment(Qt::AlignCenter);
+    formLayout->addWidget(connectionStatusLabel);
+
+    // نمایش وضعیت اولیه اتصال
+    if (!socket) {
+        connectionStatusLabel->setText("Socket is null!");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    } else if (socket->state() == QAbstractSocket::ConnectedState) {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    } else {
+        connectionStatusLabel->setText("Connecting...");
+        connectionStatusLabel->setStyleSheet("color: gray;");
+    }
+
+    // اتصال سیگنال‌های سوکت برای آپدیت وضعیت
+    connect(socket, &QTcpSocket::connected, this, [this]() {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::disconnected, this, [this]() {
+        connectionStatusLabel->setText("Disconnected from server");
+        connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        connectionStatusLabel->setText("Connection error");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    });
 
     outerLayout->addWidget(formFrame, 0, Qt::AlignHCenter);
     outerLayout->addStretch();
@@ -103,22 +130,10 @@ signup::signup(QWidget *parent)
     backButton->setFont(QFont("Georgia", 12, QFont::Bold));
     backButton->setFixedSize(100, 36);
     backButton->setStyleSheet(
-        "QPushButton {"
-        " background-color: #4e3b2b;"
-        " color: #fceacb;"
-        " border: 2px solid #d2a679;"
-        " border-radius: 10px;"
-        " font-weight: bold;"
-        " letter-spacing: 1px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #6b4c35;"
-        " border: 2px solid #e6c27a;"
-        "}"
-        "QPushButton:pressed {"
-        " background-color: #3a2a1e;"
-        " border-style: inset;"
-        "}"
+        "QPushButton { background-color: #4e3b2b; color: #fceacb; border: 2px solid #d2a679; "
+        "border-radius: 10px; font-weight: bold; letter-spacing: 1px; }"
+        "QPushButton:hover { background-color: #6b4c35; border: 2px solid #e6c27a; }"
+        "QPushButton:pressed { background-color: #3a2a1e; border-style: inset; }"
         );
 
     QHBoxLayout *bottomLayout = new QHBoxLayout;
@@ -132,11 +147,11 @@ signup::signup(QWidget *parent)
 
 void signup::goBackToMainMenu()
 {
-    this->close();
-    MainMenu *mainMenu = new MainMenu();
-    mainMenu->setAttribute(Qt::WA_DeleteOnClose);
+    this->hide();
+    MainMenu *mainMenu = new MainMenu(nullptr, socket);
     mainMenu->show();
 }
+
 
 void signup::handleSignUp()
 {
@@ -170,14 +185,29 @@ void signup::handleSignUp()
         QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
         QString hashedPasswordHex = hashedPassword.toHex();
 
-        qDebug() << "First Name:" << name;
-        qDebug() << "Last Name:" << lastname;
-        qDebug() << "Email:" << email;
-        qDebug() << "Username:" << username;
-        qDebug() << "Hashed Password:" << hashedPasswordHex;
-        qDebug() << "Phone Number:" << phone;
+        QJsonObject userJson;
+        userJson["request_type"] = "sign_up";
+        userJson["first_name"] = name;
+        userJson["last_name"] = lastname;
+        userJson["email"] = email;
+        userJson["username"] = username;
+        userJson["password_hash"] = hashedPasswordHex;
+        userJson["phone"] = phone;
 
-        QMessageBox::information(this, "Sign Up", "You have signed up successfully!");
+        QJsonDocument doc(userJson);
+        QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
+
+        if (socket && socket->state() == QAbstractSocket::ConnectedState) {
+            socket->write(jsonData);
+            socket->flush();
+
+            connect(socket, &QTcpSocket::readyRead, this, [=]() {
+                QByteArray response = socket->readAll();
+                QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
+            });
+        } else {
+            QMessageBox::warning(this, "Connection Error", "Not connected to server.");
+        }
 
     } catch (const ValidationException &ex) {
         QMessageBox::warning(this, "Invalid Information", ex.what());

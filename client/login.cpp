@@ -5,9 +5,14 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPixmap>
+#include <QMessageBox>
+#include <QCryptographicHash>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QDebug>
 
-Login::Login(QWidget *parent)
-    : QWidget(parent)
+Login::Login(QWidget *parent, QTcpSocket *socket)
+    : QWidget(parent), socket(socket)
 {
     setWindowTitle("Log in to your account");
     setFixedSize(800, 600);
@@ -24,7 +29,6 @@ Login::Login(QWidget *parent)
 
     QFrame *formFrame = new QFrame(this);
     formFrame->setFixedSize(400, 320);
-    // Removed border and radius - just plain background color
     formFrame->setStyleSheet("QFrame { background-color: #e8d4b0; }");
 
     QVBoxLayout *formLayout = new QVBoxLayout(formFrame);
@@ -37,19 +41,21 @@ Login::Login(QWidget *parent)
     titleLabel->setStyleSheet("color: #4e3b2b;");
     formLayout->addWidget(titleLabel);
 
-    QFont inputFont("Georgia", 12);
+    QFont inputFont("Consolas", 12);
 
+    // USERNAME
     usernameEdit = new QLineEdit(this);
     usernameEdit->setPlaceholderText("Username");
     usernameEdit->setFont(inputFont);
-    usernameEdit->setMinimumHeight(36);
+    usernameEdit->setMinimumHeight(44);  // ✅ افزایش ارتفاع
     usernameEdit->setStyleSheet(
         "QLineEdit {"
         " background-color: #fff9f2;"
         " border: 2px solid #a67c52;"
         " border-radius: 10px;"
-        " padding: 8px;"
+        " padding: 4px;"  // ✅ تنظیم padding مناسب
         " color: #3a2a1e;"
+        " font-size: 14px;"
         "}"
         "QLineEdit:focus {"
         " border-color: #d2a679;"
@@ -57,18 +63,20 @@ Login::Login(QWidget *parent)
         );
     formLayout->addWidget(usernameEdit);
 
+    // PASSWORD
     passwordEdit = new QLineEdit(this);
     passwordEdit->setPlaceholderText("Password");
     passwordEdit->setEchoMode(QLineEdit::Password);
     passwordEdit->setFont(inputFont);
-    passwordEdit->setMinimumHeight(36);
+    passwordEdit->setMinimumHeight(44);  // ✅ افزایش ارتفاع
     passwordEdit->setStyleSheet(
         "QLineEdit {"
         " background-color: #fff9f2;"
         " border: 2px solid #a67c52;"
         " border-radius: 10px;"
-        " padding: 8px;"
+        " padding: 4px;"  // ✅ تنظیم padding مناسب
         " color: #3a2a1e;"
+        " font-size: 14px;"
         "}"
         "QLineEdit:focus {"
         " border-color: #d2a679;"
@@ -101,29 +109,51 @@ Login::Login(QWidget *parent)
     forgotButton->setStyleSheet(buttonStyle);
     formLayout->addWidget(forgotButton);
 
+    // 🔵 برچسب وضعیت اتصال
+    connectionStatusLabel = new QLabel(this);
+    connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
+    connectionStatusLabel->setAlignment(Qt::AlignCenter);
+    formLayout->addWidget(connectionStatusLabel);
+
+    // وضعیت اتصال اولیه
+    if (!socket) {
+        connectionStatusLabel->setText("Socket is null!");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    } else if (socket->state() == QAbstractSocket::ConnectedState) {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    } else {
+        connectionStatusLabel->setText("Connecting...");
+        connectionStatusLabel->setStyleSheet("color: gray;");
+    }
+
+    // اتصال سیگنال‌ها برای آپدیت وضعیت اتصال
+    connect(socket, &QTcpSocket::connected, this, [this]() {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::disconnected, this, [this]() {
+        connectionStatusLabel->setText("Disconnected from server");
+        connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        connectionStatusLabel->setText("Connection error");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    });
+
     outerLayout->addWidget(formFrame, 0, Qt::AlignHCenter);
     outerLayout->addStretch();
 
     backButton = new QPushButton("Back", this);
     backButton->setFont(QFont("Georgia", 12, QFont::Bold));
-    backButton->setFixedSize(100, 36);  // much smaller size
+    backButton->setFixedSize(100, 36);
     backButton->setStyleSheet(
-        "QPushButton {"
-        " background-color: #4e3b2b;"
-        " color: #fceacb;"
-        " border: 2px solid #d2a679;"
-        " border-radius: 10px;"
-        " font-weight: bold;"
-        " letter-spacing: 1px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #6b4c35;"
-        " border: 2px solid #e6c27a;"
-        "}"
-        "QPushButton:pressed {"
-        " background-color: #3a2a1e;"
-        " border-style: inset;"
-        "}"
+        "QPushButton { background-color: #4e3b2b; color: #fceacb; border: 2px solid #d2a679;"
+        " border-radius: 10px; font-weight: bold; letter-spacing: 1px; }"
+        "QPushButton:hover { background-color: #6b4c35; border: 2px solid #e6c27a; }"
+        "QPushButton:pressed { background-color: #3a2a1e; border-style: inset; }"
         );
 
     QHBoxLayout *bottomLayout = new QHBoxLayout;
@@ -132,14 +162,50 @@ Login::Login(QWidget *parent)
     outerLayout->addLayout(bottomLayout);
 
     connect(backButton, &QPushButton::clicked, this, &Login::goBackToMainMenu);
+    connect(loginButton, &QPushButton::clicked, this, &Login::handleLogin);
 }
 
 void Login::goBackToMainMenu()
 {
-    this->close();
-    MainMenu *mainMenu = new MainMenu();
-    mainMenu->setAttribute(Qt::WA_DeleteOnClose);
+    this->hide();
+    MainMenu *mainMenu = new MainMenu(nullptr, socket);
     mainMenu->show();
+} /// 87t68yuy76ty
+
+void Login::handleLogin()
+{
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        QMessageBox::warning(this, "Connection Error", "Not connected to server.");
+        return;
+    }
+
+    QString username = usernameEdit->text();
+    QString password = passwordEdit->text();
+
+    if (username.isEmpty() || password.isEmpty()) {
+        QMessageBox::warning(this, "Input Error", "Please enter both username and password.");
+        return;
+    }
+
+    // هش کردن پسورد با SHA-256
+    QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
+    QString hashedPasswordHex = hashedPassword.toHex();
+
+    QJsonObject loginJson;
+    loginJson["request_type"] = "login";
+    loginJson["username"] = username;
+    loginJson["password_hash"] = hashedPasswordHex;
+
+    QJsonDocument doc(loginJson);
+    QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
+
+    socket->write(jsonData);
+    socket->flush();
+
+    connect(socket, &QTcpSocket::readyRead, this, [=]() {
+        QByteArray response = socket->readAll();
+        QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
+    });
 }
 
 Login::~Login() {}
