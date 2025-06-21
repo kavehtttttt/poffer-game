@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
 
 class signup : public QWidget
 {
@@ -17,6 +18,7 @@ public:
 
 private slots:
     void goBackToMainMenu();
+    void handleSignUp();
 
 private:
     QLabel *titleLabel;

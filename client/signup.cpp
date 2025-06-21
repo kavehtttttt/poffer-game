@@ -1,11 +1,16 @@
 #include "signup.h"
 #include "MainMenu.h"
+#include "ValidationException.h"
+
 #include <QFont>
 #include <QFrame>
-#include <QSpacerItem>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPixmap>
+#include <QRegularExpression>
+#include <QCryptographicHash>
+#include <QDebug>
+#include <QMessageBox>
 
 signup::signup(QWidget *parent)
     : QWidget(parent)
@@ -14,7 +19,7 @@ signup::signup(QWidget *parent)
     setFixedSize(800, 600);
 
     QLabel *backgroundLabel = new QLabel(this);
-    backgroundLabel->setPixmap(QPixmap(":/images/images/1000025449.png"));
+    backgroundLabel->setPixmap(QPixmap(":/images/images/1000025479.png"));
     backgroundLabel->setScaledContents(true);
     backgroundLabel->setFixedSize(800, 600);
     backgroundLabel->lower();
@@ -25,21 +30,21 @@ signup::signup(QWidget *parent)
 
     QFrame *formFrame = new QFrame(this);
     formFrame->setFixedSize(400, 480);
-    formFrame->setStyleSheet("QFrame { background-color: #F3E4CD; border-radius: 20px; }");
+    formFrame->setStyleSheet("QFrame { background-color: #e8d4b0; }");
 
     QVBoxLayout *formLayout = new QVBoxLayout(formFrame);
     formLayout->setContentsMargins(30, 30, 30, 30);
-    formLayout->setSpacing(12);
+    formLayout->setSpacing(15);
 
     titleLabel = new QLabel("Sign Up", this);
     titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setFont(QFont("Segoe UI", 22, QFont::Bold));
-    titleLabel->setStyleSheet("color: black;");
+    titleLabel->setFont(QFont("Georgia", 22, QFont::Bold));
+    titleLabel->setStyleSheet("color: #4e3b2b;");
     formLayout->addWidget(titleLabel);
 
-    QFont inputFont("Segoe UI", 12);
+    QFont inputFont("Georgia", 12);
     QStringList placeholders = {
-        "First Name", "Last Name", "Email", "Password", "Phone", "Username"
+        "First Name", "Last Name", "Email", "Password(at least 8 characters)", "Phone", "Username"
     };
     QList<QLineEdit*> edits = {
         nameEdit = new QLineEdit(this),
@@ -53,38 +58,39 @@ signup::signup(QWidget *parent)
     for (int i = 0; i < edits.size(); ++i) {
         edits[i]->setPlaceholderText(placeholders[i]);
         edits[i]->setFont(inputFont);
-        edits[i]->setMinimumHeight(38);
-        edits[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        edits[i]->setMinimumHeight(36);
         edits[i]->setStyleSheet(
             "QLineEdit {"
-            " background-color: white;"
-            " border: none;"
+            " background-color: #fff9f2;"
+            " border: 2px solid #a67c52;"
             " border-radius: 10px;"
             " padding: 8px;"
-            " color: black;"
-            " font-size: 13px;"
+            " color: #3a2a1e;"
+            "}"
+            "QLineEdit:focus {"
+            " border-color: #d2a679;"
             "}"
             );
-        if (placeholders[i] == "Password")
+        if (placeholders[i].contains("Password"))
             edits[i]->setEchoMode(QLineEdit::Password);
         formLayout->addWidget(edits[i]);
     }
 
     submitButton = new QPushButton("Sign Up", this);
-    submitButton->setFont(QFont("Segoe UI", 12, QFont::Bold));
+    submitButton->setFont(QFont("Georgia", 12, QFont::Bold));
     submitButton->setMinimumHeight(42);
-    submitButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     submitButton->setStyleSheet(
         "QPushButton {"
-        " background-color: #AF2C2C;"
-        " color: white;"
-        " border: none;"
+        " background-color: #814040;"
+        " color: #fceacb;"
+        " border: 2px solid #c2955d;"
         " border-radius: 10px;"
         " padding: 10px;"
-        " font-size: 14px;"
+        " font-weight: bold;"
+        " letter-spacing: 1px;"
         "}"
         "QPushButton:hover {"
-        " background-color: #8B1A1A;"
+        " background-color: #a0522d;"
         "}"
         );
     formLayout->addSpacing(5);
@@ -94,17 +100,24 @@ signup::signup(QWidget *parent)
     outerLayout->addStretch();
 
     backButton = new QPushButton("Back", this);
-    backButton->setFont(QFont("Segoe UI", 13, QFont::Bold));
-    backButton->setMinimumSize(110, 42);
+    backButton->setFont(QFont("Georgia", 12, QFont::Bold));
+    backButton->setFixedSize(100, 36);
     backButton->setStyleSheet(
         "QPushButton {"
-        " background-color: qradialgradient(cx:0.5, cy:0.5, radius:1.0, fx:0.5, fy:0.5, stop:0 #FF6347, stop:1 #8B0000);"
-        " color: white;"
-        " border: 3px solid #FFD700;"
-        " border-radius: 20px;"
+        " background-color: #4e3b2b;"
+        " color: #fceacb;"
+        " border: 2px solid #d2a679;"
+        " border-radius: 10px;"
+        " font-weight: bold;"
+        " letter-spacing: 1px;"
         "}"
         "QPushButton:hover {"
-        " background-color: qradialgradient(cx:0.5, cy:0.5, radius:1.0, fx:0.5, fy:0.5, stop:0 #FFA07A, stop:1 #B22222);"
+        " background-color: #6b4c35;"
+        " border: 2px solid #e6c27a;"
+        "}"
+        "QPushButton:pressed {"
+        " background-color: #3a2a1e;"
+        " border-style: inset;"
         "}"
         );
 
@@ -114,6 +127,7 @@ signup::signup(QWidget *parent)
     outerLayout->addLayout(bottomLayout);
 
     connect(backButton, &QPushButton::clicked, this, &signup::goBackToMainMenu);
+    connect(submitButton, &QPushButton::clicked, this, &signup::handleSignUp);
 }
 
 void signup::goBackToMainMenu()
@@ -122,6 +136,54 @@ void signup::goBackToMainMenu()
     MainMenu *mainMenu = new MainMenu();
     mainMenu->setAttribute(Qt::WA_DeleteOnClose);
     mainMenu->show();
+}
+
+void signup::handleSignUp()
+{
+    try {
+        QString name = nameEdit->text();
+        QString lastname = lastnameEdit->text();
+        QString email = emailEdit->text();
+        QString username = usernameEdit->text();
+        QString password = passwordEdit->text();
+        QString phone = phoneEdit->text();
+
+        QRegularExpression phoneRegex("^09\\d{9}$");
+        QRegularExpression emailValidChars("^[A-Za-z0-9@.]+$");
+        QRegularExpression passwordRegex("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$");
+
+        QString errorMessage;
+
+        if (!phoneRegex.match(phone).hasMatch())
+            errorMessage += "• Phone number is invalid.\n";
+
+        int atCount = email.count('@');
+        if (atCount != 1 || !email.contains('.') || !emailValidChars.match(email).hasMatch())
+            errorMessage += "• Email is invalid.\n";
+
+        if (!passwordRegex.match(password).hasMatch())
+            errorMessage += "• Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a digit.\n";
+
+        if (!errorMessage.isEmpty())
+            throw ValidationException(errorMessage.trimmed());
+
+        QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
+        QString hashedPasswordHex = hashedPassword.toHex();
+
+        qDebug() << "First Name:" << name;
+        qDebug() << "Last Name:" << lastname;
+        qDebug() << "Email:" << email;
+        qDebug() << "Username:" << username;
+        qDebug() << "Hashed Password:" << hashedPasswordHex;
+        qDebug() << "Phone Number:" << phone;
+
+        QMessageBox::information(this, "Sign Up", "You have signed up successfully!");
+
+    } catch (const ValidationException &ex) {
+        QMessageBox::warning(this, "Invalid Information", ex.what());
+    } catch (const std::exception &ex) {
+        QMessageBox::critical(this, "Unexpected Error", ex.what());
+    }
 }
 
 signup::~signup() {}

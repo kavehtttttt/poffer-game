@@ -9,12 +9,14 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    ValidationException.cpp \
     login.cpp \
     main.cpp \
     mainmenu.cpp \
     signup.cpp
 
 HEADERS += \
+    ValidationException.h \
     login.h \
     mainmenu.h \
     signup.h
@@ -30,4 +32,4 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \
-    resources.qrc
+    images.qrc
