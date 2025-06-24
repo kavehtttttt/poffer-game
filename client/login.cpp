@@ -10,6 +10,8 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDebug>
+#include "UserPanel.h" // اضافه در بالای فایل
+#include "resetpassword.h"
 
 Login::Login(QWidget *parent, QTcpSocket *socket)
     : QWidget(parent), socket(socket)
@@ -163,6 +165,11 @@ Login::Login(QWidget *parent, QTcpSocket *socket)
 
     connect(backButton, &QPushButton::clicked, this, &Login::goBackToMainMenu);
     connect(loginButton, &QPushButton::clicked, this, &Login::handleLogin);
+    connect(forgotButton,&QPushButton::clicked,this,[=](){
+        this->hide();
+        ResetPassword *resetPage = new ResetPassword(nullptr,socket);
+        resetPage->show();
+    });
 }
 
 void Login::goBackToMainMenu()
@@ -191,6 +198,7 @@ void Login::handleLogin()
     QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
     QString hashedPasswordHex = hashedPassword.toHex();
 
+    // ساختن شی JSON برای لاگین
     QJsonObject loginJson;
     loginJson["request_type"] = "login";
     loginJson["username"] = username;
@@ -199,13 +207,26 @@ void Login::handleLogin()
     QJsonDocument doc(loginJson);
     QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
 
+    // ارسال به سرور
     socket->write(jsonData);
     socket->flush();
 
+    // جلوگیری از اتصال‌های تکراری به readyRead:
+    socket->disconnect(SIGNAL(readyRead()));
+
     connect(socket, &QTcpSocket::readyRead, this, [=]() {
         QByteArray response = socket->readAll();
-        QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
+        QString responseStr = QString::fromUtf8(response).trimmed();
+
+        QMessageBox::information(this, "Server Response", responseStr);
+
+        if (responseStr == "login_success") {
+            this->hide();
+            UserPanel *panel = new UserPanel(nullptr, socket);
+            panel->show();
+        }
     });
 }
+
 
 Login::~Login() {}

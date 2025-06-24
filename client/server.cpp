@@ -37,7 +37,17 @@ void Server::onReadyRead()
             QString response = QString("User %1 signed up successfully!").arg(username);
             clientSocket->write(response.toUtf8());
             clientSocket->flush();
-        } else {
+        }
+
+        else if (requestType == "login") {
+            // ✅ Always accept login
+            qDebug() << "Login request received from:"
+                     << obj.value("username").toString();
+            clientSocket->write("login_success");
+            clientSocket->flush();
+        }
+
+        else {
             clientSocket->write("Unknown request");
             clientSocket->flush();
         }
