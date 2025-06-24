@@ -49,11 +49,17 @@
     <ClCompile Include="server.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Users.cpp">
-      <Filter>Generated Files</Filter>
-    </ClCompile>
     <ClCompile Include="User.cpp">
-      <Filter>Generated Files</Filter>
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Users.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UserException.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Account.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -66,11 +72,14 @@
     <QtMoc Include="server.h">
       <Filter>Header Files</Filter>
     </QtMoc>
-    <QtMoc Include="User.h">
-      <Filter>Generated Files</Filter>
-    </QtMoc>
     <QtMoc Include="Users.h">
-      <Filter>Generated Files</Filter>
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="User.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="Account.h">
+      <Filter>Header Files</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>
@@ -85,5 +94,10 @@
     <QtUic Include="mainwindow.ui">
       <Filter>Form Files</Filter>
     </QtUic>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="UserException.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

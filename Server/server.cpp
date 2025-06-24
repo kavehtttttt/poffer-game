@@ -4,11 +4,14 @@
 Server::Server(QObject *parent)
     : QTcpServer(parent)
 {
+    users = new Users(this);
+    account = new Account(users, this);
+
 }
 
 void Server::startServer()
 {
-    if (listen(QHostAddress::Any, 8080)) {
+    if (listen(QHostAddress::Any, 1234)) {
         qDebug() << "Server started on port 1234";
     } else {
         qDebug() << "Failed to start server";
@@ -44,20 +47,44 @@ void Server::handleMessage(chanells* source, QString msg)
 
     QJsonObject obj = doc.object();
     QString type = obj["type"].toString();
+    QJsonObject response;
 
-    if (type == "login") {
-       //I will make class name account to handle sign in and sign up getting just obj Json
+    try {
+        if (type == "login") {
+            response = account->login(obj);
+        }
+        else if (type == "signup") {
+            response = account->signup(obj);
+        }
+        else if (type == "forgetPassword") {
+            response = account->forgetpass(obj);
+        }
+        else if (type == "start_game") {
+            // handel game
+            response = QJsonObject{
+                {"type", "start_game"},
+                {"status", "not_implemented"}
+            };
+        }
+        else {
+            response = QJsonObject{
+                {"type", "error"},
+                {"message", "Unknown request type"}
+            };
+        }
     }
-    else if (type == "signup") {
-        //I will make class name account to handle sign in and sign up getting just obj Json
+    catch (const UserException& ex) {
+        response = QJsonObject{
+            {"type", type},
+            {"status", "error"},
+            {"message", ex.what()}
+        };
     }
-    else if (type == "start_game") {
-       //It will be done in game class
-    }
-    else {
-        qDebug() << "Unknown message type";
-    }
+
+    QJsonDocument docRes(response);
+    source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
 }
+
 
 void Server::handleDisconnection()
 {

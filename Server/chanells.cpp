@@ -44,3 +44,11 @@ void chanells::communication()
         }
     }
 }
+void chanells::sendMessage(const QString& msg)
+{
+    if (socket && socket->isOpen()) {
+        QByteArray data = msg.toUtf8();
+        socket->write(data);
+        socket->flush();
+    }
+}

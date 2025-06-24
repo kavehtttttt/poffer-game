@@ -15,6 +15,7 @@ public:
 
     void start();
     void stop();
+    void sendMessage(const QString& msg);
 
 private:
     QTcpSocket *socket;

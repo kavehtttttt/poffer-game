@@ -8,6 +8,9 @@
 #include<QJsonParseError>
 #include<QJsonDocument>
 #include<QJsonObject>
+#include"Users.h"
+#include"Account.h"
+
 
 class Server : public QTcpServer
 {
@@ -22,6 +25,9 @@ protected:
 
 private:
     QList<chanells*> clients;
+    Users* users;
+    Account* account;
+
 
 private slots:
     void handleMessage(chanells* source, QString msg);

@@ -6,6 +6,9 @@
 #include<QJsonParseError>
 #include<QJsonDocument>
 #include<QJsonObject>
+#include<QJsonArray>
+#include<QFile>
+#include"UserException.h"
 
 class Users :
     public QObject
@@ -19,6 +22,7 @@ public:
     ~Users();
     bool signin(const QJsonObject& user);
     bool login(const QJsonObject& user);
+    bool forgetpass(const QJsonObject& user);
     bool Is_User(const QString& userN);
     void read_from_file(const QString file = "UsersInfo.txt");
     void addToMap(User* user);
