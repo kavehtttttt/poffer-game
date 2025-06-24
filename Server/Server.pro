@@ -13,12 +13,21 @@ SOURCES += \
     chanells.cpp \
     main.cpp \
     mainwindow.cpp \
-    server.cpp
+    server.cpp \
+    Account.cpp \
+    User.cpp \
+    Users.cpp \
+    UserException.cpp \
+
 
 HEADERS += \
     chanells.h \
     mainwindow.h \
-    server.h
+    server.h \
+    Account.h \
+    User.h \
+    Users.h \
+    UserException.h \
 
 FORMS += \
     mainwindow.ui
