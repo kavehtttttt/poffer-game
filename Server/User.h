@@ -2,6 +2,11 @@
 #include <QString>
 #include <QJsonObject>
 #include <QCryptographicHash>
+#include <QList>
+#include <QDateTime>
+#include <QJsonArray>
+
+#include "GameHistoryEntry.h"
 
 class User
 {
@@ -26,14 +31,18 @@ public:
     void setPhoneNumber(const QString& value);
     void setEmail(const QString& value);
     void setPassword(const QString& plainPassword);
+    void setUsername(const QString& value);
 
     bool checkPassword(const QString& inputPassword) const;
 
     QJsonObject toJson() const;
-
     static User fromJson(const QJsonObject& obj, bool hashIfNeeded = true);
 
     static QString hashPassword(const QString& password);
+
+    // Methods for Game History
+    void addGameHistory(const GameHistoryEntry& entry);
+    QList<GameHistoryEntry> getGameHistory() const;
 
 private:
     QString username;
@@ -42,4 +51,5 @@ private:
     QString lastName;
     QString phoneNumber;
     QString email;
+    QList<GameHistoryEntry> gameHistory;
 };

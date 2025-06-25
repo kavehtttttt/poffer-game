@@ -1,5 +1,7 @@
 #include "User.h"
-#include <QDebug> // برای qDbug
+#include <QDebug>
+#include <QJsonArray>
+#include "GameHistoryEntry.h"
 
 // --- Constructor ---
 User::User() = default;
@@ -37,6 +39,8 @@ void User::setPassword(const QString& plainPassword) {
     hashedPassword = hashPassword(plainPassword);
 }
 
+void User::setUsername(const QString& value) { username = value; }
+
 // --- Hashing ---
 QString User::hashPassword(const QString& password) {
     return QString(QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256).toHex());
@@ -55,15 +59,19 @@ QJsonObject User::toJson() const {
     obj["last_name"] = lastName;
     obj["phone_number"] = phoneNumber;
     obj["email"] = email;
+
+    // Serialize game history
+    QJsonArray historyArray;
+    for (const GameHistoryEntry& entry : gameHistory) {
+        historyArray.append(entry.toJson());
+    }
+    obj["game_history"] = historyArray;
+
     return obj;
 }
 
-
 User User::fromJson(const QJsonObject& obj, bool hashIfNeeded) {
     User u;
-    qDebug() << "User::fromJson - Input JSON object for username:" << obj["username"];
-    qDebug() << "User::fromJson - Extracted username string:" << obj["username"].toString();
-
     u.username = obj["username"].toString();
     u.firstName = obj["first_name"].toString();
     u.lastName = obj["last_name"].toString();
@@ -76,6 +84,27 @@ User User::fromJson(const QJsonObject& obj, bool hashIfNeeded) {
     else {
         u.hashedPassword = obj["hashed_password"].toString();
     }
-    qDebug() << "User::fromJson - Before returning, username in 'u':" << u.getUsername();
+
+    // Deserialize game history
+    if (obj.contains("game_history") && obj["game_history"].isArray()) {
+        QJsonArray historyArray = obj["game_history"].toArray();
+        for (const QJsonValue& val : historyArray) {
+            if (val.isObject()) {
+                u.gameHistory.append(GameHistoryEntry::fromJson(val.toObject()));
+            }
+        }
+    }
     return u;
+}
+
+
+void User::addGameHistory(const GameHistoryEntry& entry) {
+    gameHistory.prepend(entry); // Add to the beginning (most recent)
+    if (gameHistory.size() > 3) {
+        gameHistory.removeLast(); // Remove the oldest if more than 3
+    }
+}
+
+QList<GameHistoryEntry> User::getGameHistory() const {
+    return gameHistory;
 }

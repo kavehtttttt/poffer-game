@@ -44,6 +44,9 @@ void Server::handleMessage(chanells* source, QString msg)
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError) {
         qDebug() << "Invalid JSON format";
+        QJsonObject response = QJsonObject{{"type", "error"}, {"message", "Invalid JSON format"}};
+        QJsonDocument docRes(response);
+        source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
         return;
     }
 
@@ -54,12 +57,48 @@ void Server::handleMessage(chanells* source, QString msg)
     try {
         if (type == "login") {
             response = account->login(obj);
+            if(response["status"]=="success"){
+                source->setUsername(obj["username"].toString());
+            }
+        }
+        else if (type == "logout") {
+            response = account->logout(obj);
+            source->setUsername("unknown");
         }
         else if (type == "signup") {
             response = account->signup(obj);
         }
         else if (type == "forgetPassword") {
             response = account->forgetpass(obj);
+        }
+        // User data edit operations
+        else if (type == "Edit_username") {
+            response = account->editUsername(obj);
+            if(response["status"]=="success"){
+                source->setUsername(obj["new_username"].toString());
+            }
+        }
+        else if (type == "Edit_password") {
+            response = account->editPassword(obj);
+        }
+        else if (type == "Edit_email") {
+            response = account->editEmail(obj);
+        }
+        else if (type == "Edit_Phone") {
+            response = account->editPhone(obj);
+        }
+        else if (type == "Edit_fName") {
+            response = account->editFirstName(obj);
+        }
+        else if (type == "Edit_Lname") {
+            response = account->editLastName(obj);
+        }
+        // Game History operations
+        else if (type == "Get_History") {
+            response = account->getGameHistory(obj);
+        }
+        else if (type == "Add_History") {
+            response = account->addGameHistory(obj);
         }
         else if (type == "start_game") {
             response = QJsonObject{
@@ -85,6 +124,7 @@ void Server::handleMessage(chanells* source, QString msg)
     QJsonDocument docRes(response);
     source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
 }
+
 
 void Server::handleDisconnection()
 {

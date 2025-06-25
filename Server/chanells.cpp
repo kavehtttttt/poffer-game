@@ -4,7 +4,7 @@
 chanells::chanells(QTcpSocket *_socket, QObject *parent)
     : QObject(parent), socket(_socket)
 {
-
+    Username="unknown";
     socket->setParent(this);
 }
 
@@ -48,4 +48,10 @@ void chanells::sendMessage(const QString& msg)
         socket->write(msg.toUtf8());
         socket->flush();
     }
+}
+void chanells::setUsername(QString u){
+    Username=u;
+}
+QString chanells::getUsernamme(){
+    return Username;
 }

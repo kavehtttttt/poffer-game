@@ -14,6 +14,8 @@ public:
     ~chanells();
 
     void sendMessage(const QString& msg);
+    void setUsername(QString u);
+    QString getUsernamme();
 
 public slots:
     void start();
@@ -26,6 +28,7 @@ signals:
 
 private:
     QTcpSocket *socket;
+    QString Username;
 
 };
 
