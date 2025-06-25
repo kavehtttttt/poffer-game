@@ -1,14 +1,15 @@
-#include "user.h"
+#include "User.h"
+#include <QDebug> // برای qDbug
 
 // --- Constructor ---
 User::User() = default;
 
 User::User(const QString& username,
-    const QString& password,
-    const QString& firstName,
-    const QString& lastName,
-    const QString& phoneNumber,
-    const QString& email)
+           const QString& password,
+           const QString& firstName,
+           const QString& lastName,
+           const QString& phoneNumber,
+           const QString& email)
     : username(username),
     firstName(firstName),
     lastName(lastName),
@@ -57,18 +58,24 @@ QJsonObject User::toJson() const {
     return obj;
 }
 
-User* User::fromJson(const QJsonObject& obj, bool hashIfNeeded) {
-    User* u=new User;
-    u->username = obj["username"].toString();
-    u->firstName = obj["first_name"].toString();
-    u->lastName = obj["last_name"].toString();
-    u->phoneNumber = obj["phone_number"].toString();
-    u->email = obj["email"].toString();
 
-    if (hashIfNeeded)
-        u->hashedPassword = hashPassword(obj["password"].toString());
-    else
-        u->hashedPassword = obj["hashed_password"].toString();
+User User::fromJson(const QJsonObject& obj, bool hashIfNeeded) {
+    User u;
+    qDebug() << "User::fromJson - Input JSON object for username:" << obj["username"];
+    qDebug() << "User::fromJson - Extracted username string:" << obj["username"].toString();
 
+    u.username = obj["username"].toString();
+    u.firstName = obj["first_name"].toString();
+    u.lastName = obj["last_name"].toString();
+    u.phoneNumber = obj["phone_number"].toString();
+    u.email = obj["email"].toString();
+
+    if (hashIfNeeded) {
+        u.hashedPassword = hashPassword(obj["password"].toString());
+    }
+    else {
+        u.hashedPassword = obj["hashed_password"].toString();
+    }
+    qDebug() << "User::fromJson - Before returning, username in 'u':" << u.getUsername();
     return u;
 }

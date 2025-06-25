@@ -11,11 +11,12 @@
 #include"UserException.h"
 
 class Users :
-    public QObject
+              public QObject
 {
     Q_OBJECT
 private:
-    QMap<QString, User*>* Players;
+
+    QMap<QString, User>* Players;
 
 public:
     Users(QObject* parent=nullptr);
@@ -25,7 +26,6 @@ public:
     bool forgetpass(const QJsonObject& user);
     bool Is_User(const QString& userN);
     void read_from_file(const QString file = "UsersInfo.txt");
-    void addToMap(User* user);
+    void addToMap(const User& user);
     void Save_to_file(const QString file = "UsersInfo.txt");
 };
-

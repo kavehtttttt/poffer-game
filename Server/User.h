@@ -1,25 +1,18 @@
 #pragma once
-#include<iostream>
-#include <QObject>
-#include<QJsonParseError>
-#include<QJsonDocument>
-#include<QJsonObject>
-#include<QCryptographicHash>
+#include <QString>
+#include <QJsonObject>
+#include <QCryptographicHash>
 
-
-
-class User :
-    public QObject
+class User
 {
-    Q_OBJECT
 public:
-    User();//It May give me compile error for not constructing QObject class
+    User();
     User(const QString& username,
-        const QString& password,
-        const QString& firstName,
-        const QString& lastName,
-        const QString& phoneNumber,
-        const QString& email);
+         const QString& password,
+         const QString& firstName,
+         const QString& lastName,
+         const QString& phoneNumber,
+         const QString& email);
 
     QString getUsername() const;
     QString getFirstName() const;
@@ -37,7 +30,8 @@ public:
     bool checkPassword(const QString& inputPassword) const;
 
     QJsonObject toJson() const;
-    static User* fromJson(const QJsonObject& obj, bool hashIfNeeded = true);
+
+    static User fromJson(const QJsonObject& obj, bool hashIfNeeded = true);
 
     static QString hashPassword(const QString& password);
 
@@ -48,6 +42,4 @@ private:
     QString lastName;
     QString phoneNumber;
     QString email;
-
 };
-
