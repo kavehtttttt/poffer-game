@@ -89,18 +89,25 @@ ResetPassword::ResetPassword(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: gray;");
     }
 
+    // اتصالات وضعیت اتصال
     connect(socket, &QTcpSocket::connected, this, [=]() {
         connectionStatusLabel->setText("Connected to server");
         connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
     });
+
     connect(socket, &QTcpSocket::disconnected, this, [=]() {
         connectionStatusLabel->setText("Disconnected from server");
         connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
     });
+
     connect(socket, &QTcpSocket::errorOccurred, this, [=](QAbstractSocket::SocketError) {
         connectionStatusLabel->setText("Connection error");
         connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
     });
+
+    // قطع اتصال قبلی و اتصال مجدد برای جلوگیری از دریافت چندباره
+    disconnect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
+    connect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
 
     outerLayout->addWidget(formFrame, 0, Qt::AlignHCenter);
     outerLayout->addStretch();
@@ -152,32 +159,36 @@ void ResetPassword::handleResetPassword()
     QJsonObject json;
     json["type"] = "forgetPassword";
     json["username"] = username;
-    json["phone"] = phone;
-    json["new_password"] = newPassword; // بدون هش
+    json["phoneNumber"] = phone;
+    json["newPassword"] = newPassword;
 
     QJsonDocument doc(json);
     QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
 
     if (socket && socket->state() == QAbstractSocket::ConnectedState) {
-        socket->disconnect(SIGNAL(readyRead()));
         socket->write(jsonData);
         socket->flush();
-
-        connect(socket, &QTcpSocket::readyRead, this, [=]() {
-            QByteArray response = socket->readAll();
-            QString responseStr = QString::fromUtf8(response).trimmed();
-            QMessageBox::information(this, "Server", responseStr);
-        });
     } else {
         QMessageBox::warning(this, "Connection Error", "Not connected to server.");
     }
 }
 
+void ResetPassword::handleServerResponse()
+{
+    QByteArray response = socket->readAll();
+    QString responseStr = QString::fromUtf8(response).trimmed();
+    QMessageBox::information(this, "Server", responseStr);
+}
+
 void ResetPassword::goBackToLogin()
 {
+    // قطع اتصال برای جلوگیری از دوبار دریافت
+    disconnect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
+
     this->hide();
     Login *loginPage = new Login(nullptr, socket);
     loginPage->show();
+    this->deleteLater(); // پاک‌سازی امن
 }
 
 ResetPassword::~ResetPassword() {}

@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDebug>
+#include <QMessageBox>
 
 signup::signup(QWidget *parent, QTcpSocket *socket)
     : QWidget(parent), socket(socket)
@@ -42,7 +43,7 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
     titleLabel->setStyleSheet("color: #4e3b2b;");
     formLayout->addWidget(titleLabel);
 
-    QFont inputFont("Consolas", 12);  // ✅ به جای Georgia
+    QFont inputFont("Consolas", 12);
     QStringList placeholders = {
         "First Name", "Last Name", "Email", "Password(at least 8 characters)", "Phone", "Username"
     };
@@ -58,13 +59,13 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
     for (int i = 0; i < edits.size(); ++i) {
         edits[i]->setPlaceholderText(placeholders[i]);
         edits[i]->setFont(inputFont);
-        edits[i]->setMinimumHeight(44);  // ✅ افزایش ارتفاع برای رفع مشکل
+        edits[i]->setMinimumHeight(44);
         edits[i]->setStyleSheet(
             "QLineEdit {"
             " background-color: #fff9f2;"
             " border: 2px solid #a67c52;"
             " border-radius: 10px;"
-            " padding: 4px;"  // ✅ padding مناسب برای جلوگیری از بریدگی
+            " padding: 4px;"
             " color: #3a2a1e;"
             " font-size: 14px;"
             "}"
@@ -77,7 +78,6 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
         formLayout->addWidget(edits[i]);
     }
 
-
     submitButton = new QPushButton("Sign Up", this);
     submitButton->setFont(QFont("Georgia", 12, QFont::Bold));
     submitButton->setMinimumHeight(42);
@@ -89,13 +89,12 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
     formLayout->addSpacing(5);
     formLayout->addWidget(submitButton);
 
-    // 🔵 برچسب وضعیت اتصال به سرور
+    // 🔵 وضعیت اتصال
     connectionStatusLabel = new QLabel(this);
     connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
     connectionStatusLabel->setAlignment(Qt::AlignCenter);
     formLayout->addWidget(connectionStatusLabel);
 
-    // نمایش وضعیت اولیه اتصال
     if (!socket) {
         connectionStatusLabel->setText("Socket is null!");
         connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
@@ -107,21 +106,24 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: gray;");
     }
 
-    // اتصال سیگنال‌های سوکت برای آپدیت وضعیت
-    connect(socket, &QTcpSocket::connected, this, [this]() {
+    // 🔧 رفع مشکل: قطع اتصال‌های قبلی و اتصال مجدد
+    disconnect(socket, nullptr, this, nullptr);
+    connect(socket, &QTcpSocket::connected, this, [=]() {
         connectionStatusLabel->setText("Connected to server");
         connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
     });
 
-    connect(socket, &QTcpSocket::disconnected, this, [this]() {
+    connect(socket, &QTcpSocket::disconnected, this, [=]() {
         connectionStatusLabel->setText("Disconnected from server");
         connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
     });
 
-    connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+    connect(socket, &QTcpSocket::errorOccurred, this, [=](QAbstractSocket::SocketError) {
         connectionStatusLabel->setText("Connection error");
         connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
     });
+
+    connect(socket, &QTcpSocket::readyRead, this, &signup::handleServerResponse);
 
     outerLayout->addWidget(formFrame, 0, Qt::AlignHCenter);
     outerLayout->addStretch();
@@ -147,11 +149,14 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
 
 void signup::goBackToMainMenu()
 {
+    // قطع اتصال قبل از رفتن به صفحه‌ی اصلی
+    disconnect(socket, &QTcpSocket::readyRead, this, &signup::handleServerResponse);
+
     this->hide();
     MainMenu *mainMenu = new MainMenu(nullptr, socket);
     mainMenu->show();
+    this->deleteLater();
 }
-
 
 void signup::handleSignUp()
 {
@@ -182,14 +187,14 @@ void signup::handleSignUp()
         if (!errorMessage.isEmpty())
             throw ValidationException(errorMessage.trimmed());
 
-        // بدون هش کردن
+        // ساخت JSON و ارسال
         QJsonObject userJson;
         userJson["type"] = "signup";
         userJson["first_name"] = name;
         userJson["last_name"] = lastname;
         userJson["email"] = email;
         userJson["username"] = username;
-        userJson["hashed_password"] = password; // رمز عبور ساده
+        userJson["password"] = password;
         userJson["phone_number"] = phone;
 
         QJsonDocument doc(userJson);
@@ -198,11 +203,6 @@ void signup::handleSignUp()
         if (socket && socket->state() == QAbstractSocket::ConnectedState) {
             socket->write(jsonData);
             socket->flush();
-
-            connect(socket, &QTcpSocket::readyRead, this, [=]() {
-                QByteArray response = socket->readAll();
-                QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
-            });
         } else {
             QMessageBox::warning(this, "Connection Error", "Not connected to server.");
         }
@@ -214,5 +214,10 @@ void signup::handleSignUp()
     }
 }
 
+void signup::handleServerResponse()
+{
+    QByteArray response = socket->readAll();
+    QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
+}
 
 signup::~signup() {}

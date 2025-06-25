@@ -18,6 +18,7 @@ public:
 private slots:
     void handleResetPassword();
     void goBackToLogin();
+    void handleServerResponse();
 
 private:
     QLineEdit *usernameEdit;

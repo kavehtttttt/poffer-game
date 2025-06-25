@@ -19,6 +19,7 @@ public:
 private slots:
     void goBackToMainMenu();
     void handleLogin();
+    void handleServerResponse();
 
 private:
     QLabel *titleLabel;
