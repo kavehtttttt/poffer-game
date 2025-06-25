@@ -179,7 +179,7 @@ void Login::goBackToMainMenu()
     mainMenu->show();
 } /// 87t68yuy76ty
 
-void Login::handleLogin()
+    void Login::handleLogin()
 {
     if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
         QMessageBox::warning(this, "Connection Error", "Not connected to server.");
@@ -194,39 +194,31 @@ void Login::handleLogin()
         return;
     }
 
-    // هش کردن پسورد با SHA-256
-    QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
-    QString hashedPasswordHex = hashedPassword.toHex();
-
-    // ساختن شی JSON برای لاگین
+    // بدون هش کردن
     QJsonObject loginJson;
-    loginJson["request_type"] = "login";
+    loginJson["type"] = "login";
     loginJson["username"] = username;
-    loginJson["password_hash"] = hashedPasswordHex;
+    loginJson["hashed_password"] = password; // رمز عبور ساده
 
     QJsonDocument doc(loginJson);
     QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
 
-    // ارسال به سرور
     socket->write(jsonData);
     socket->flush();
 
-    // جلوگیری از اتصال‌های تکراری به readyRead:
     socket->disconnect(SIGNAL(readyRead()));
 
     connect(socket, &QTcpSocket::readyRead, this, [=]() {
         QByteArray response = socket->readAll();
         QString responseStr = QString::fromUtf8(response).trimmed();
-
         QMessageBox::information(this, "Server Response", responseStr);
 
-        if (responseStr == "login_success") {
-            this->hide();
-            UserPanel *panel = new UserPanel(nullptr, socket);
-            panel->show();
-        }
+        this->hide();
+        UserPanel *panel = new UserPanel(nullptr, socket);
+        panel->show();
     });
 }
+
 
 
 Login::~Login() {}

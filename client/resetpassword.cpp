@@ -5,7 +5,6 @@
 #include <QHBoxLayout>
 #include <QFrame>
 #include <QFont>
-#include <QCryptographicHash>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QMessageBox>
@@ -150,14 +149,11 @@ void ResetPassword::handleResetPassword()
         return;
     }
 
-    QByteArray hashedPassword = QCryptographicHash::hash(newPassword.toUtf8(), QCryptographicHash::Sha256);
-    QString hashedPasswordHex = hashedPassword.toHex();
-
     QJsonObject json;
-    json["request_type"] = "forget_password";
+    json["type"] = "forgetPassword";
     json["username"] = username;
     json["phone"] = phone;
-    json["new_password_hash"] = hashedPasswordHex;
+    json["new_password"] = newPassword; // بدون هش
 
     QJsonDocument doc(json);
     QByteArray jsonData = doc.toJson(QJsonDocument::Compact);

@@ -182,17 +182,15 @@ void signup::handleSignUp()
         if (!errorMessage.isEmpty())
             throw ValidationException(errorMessage.trimmed());
 
-        QByteArray hashedPassword = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256);
-        QString hashedPasswordHex = hashedPassword.toHex();
-
+        // بدون هش کردن
         QJsonObject userJson;
-        userJson["request_type"] = "sign_up";
+        userJson["type"] = "signup";
         userJson["first_name"] = name;
         userJson["last_name"] = lastname;
         userJson["email"] = email;
         userJson["username"] = username;
-        userJson["password_hash"] = hashedPasswordHex;
-        userJson["phone"] = phone;
+        userJson["hashed_password"] = password; // رمز عبور ساده
+        userJson["phone_number"] = phone;
 
         QJsonDocument doc(userJson);
         QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
@@ -215,5 +213,6 @@ void signup::handleSignUp()
         QMessageBox::critical(this, "Unexpected Error", ex.what());
     }
 }
+
 
 signup::~signup() {}
