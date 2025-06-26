@@ -10,7 +10,11 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    Card.cpp \
+    Deck.cpp \
     GameHistoryEntry.cpp \
+    Hand.cpp \
+    Pofferrankevaluator.cpp \
     chanells.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -22,7 +26,11 @@ SOURCES += \
 
 
 HEADERS += \
+    Card.h \
+    Deck.h \
     GameHistoryEntry.h \
+    Hand.h \
+    Pofferrankevaluator.h \
     chanells.h \
     mainwindow.h \
     server.h \
