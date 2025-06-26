@@ -3,6 +3,7 @@
 
 #include <QTcpServer>
 #include <QList>
+#include <QMap> // Added for QMap
 #include "chanells.h"
 #include "Users.h"
 #include "Account.h"
@@ -21,9 +22,11 @@ protected:
 private slots:
     void handleMessage(chanells* source, QString msg);
     void handleDisconnection();
+    void notifyWaitingClients(); // New slot to send waiting list updates
 
 private:
     QList<chanells*> clients;
+    QMap<QString, chanells*> waitingClients; // Map to store clients in waiting room (username to channel)
     Users* users;
     Account* account;
 };

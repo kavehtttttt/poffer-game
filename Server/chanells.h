@@ -15,7 +15,7 @@ public:
 
     void sendMessage(const QString& msg);
     void setUsername(QString u);
-    QString getUsernamme();
+    QString getUsername();
 
 public slots:
     void start();

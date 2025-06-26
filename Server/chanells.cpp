@@ -52,6 +52,6 @@ void chanells::sendMessage(const QString& msg)
 void chanells::setUsername(QString u){
     Username=u;
 }
-QString chanells::getUsernamme(){
+QString chanells::getUsername(){
     return Username;
 }
