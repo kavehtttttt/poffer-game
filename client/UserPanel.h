@@ -11,7 +11,7 @@ class UserPanel : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit UserPanel(QWidget *parent = nullptr, QTcpSocket *socket = nullptr);
+    explicit UserPanel(QWidget *parent = nullptr, QTcpSocket *socket = nullptr, const QString &username = "");
     ~UserPanel();
 
 private slots:
@@ -22,6 +22,8 @@ private slots:
 
 private:
     QTcpSocket *socket;
+    QString username;
+
     QWidget *centralWidget;
     QLabel *backgroundLabel;
     QLabel *connectionStatusLabel;

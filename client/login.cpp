@@ -193,7 +193,7 @@ void Login::handleServerResponse()
     if (type == "login" && status == "success") {
         QMessageBox::information(this, "Login", message);
         this->hide();
-        UserPanel *panel = new UserPanel(nullptr, socket);
+        UserPanel *panel = new UserPanel(nullptr, socket , usernameEdit->text());
         panel->show();
         this->deleteLater();
     } else {

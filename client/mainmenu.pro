@@ -10,27 +10,28 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    EditInfo.cpp \
     UserPanel.cpp \
     ValidationException.cpp \
     login.cpp \
     main.cpp \
     mainmenu.cpp \
     resetpassword.cpp \
-    server.cpp \
     signup.cpp
 
 HEADERS += \
+    EditInfo.h \
     UserPanel.h \
     ValidationException.h \
     login.h \
     mainmenu.h \
     resetpassword.h \
-    server.h \
     signup.h
 
 FORMS += \
     UserPanel.ui \
     basewindow.ui \
+    editinfo.ui \
     login.ui \
     mainmenu.ui \
     resetpassword.ui \

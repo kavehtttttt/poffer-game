@@ -1,6 +1,5 @@
 #include "resetpassword.h"
 #include "login.h"
-
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>

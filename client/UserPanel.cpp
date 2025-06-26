@@ -1,15 +1,17 @@
 #include "UserPanel.h"
+#include "EditInfo.h"
+#include "mainmenu.h"
 #include <QFont>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QPixmap>
 #include <QMessageBox>
 
-UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket)
-    : QMainWindow(parent), socket(socket)
+UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &username)
+    : QMainWindow(parent), socket(socket), username(username)
 {
     setFixedSize(800, 600);
-    setWindowTitle("User Panel");
+    setWindowTitle("Welcome, " + username);
 
     centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
@@ -41,7 +43,7 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket)
     playButton = new QPushButton("PLAY GAME");
     historyButton = new QPushButton("HISTORY");
     editInfoButton = new QPushButton("EDIT INFO");
-    exitButton = new QPushButton("EXIT");
+    exitButton = new QPushButton("LOG OUT");
 
     QPushButton* buttons[] = {playButton, historyButton, editInfoButton};
 
@@ -137,13 +139,7 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket)
     });
 }
 
-UserPanel::~UserPanel()
-{
-    if (socket) {
-        socket->disconnectFromHost();
-        socket->deleteLater();
-    }
-}
+UserPanel::~UserPanel(){}
 
 void UserPanel::onPlayGameClicked()
 {
@@ -157,11 +153,17 @@ void UserPanel::onHistoryClicked()
 
 void UserPanel::onEditInfoClicked()
 {
-    QMessageBox::information(this, "Edit Info", "You clicked Edit Info.");
+    this->hide();
+    EditInfo* editinfo = new EditInfo(nullptr,socket,username);
+    editinfo->show();
+    this->deleteLater();
+
 }
 
 void UserPanel::onExitAccountClicked()
 {
-    QMessageBox::information(this, "Exit", "Logging out...");
-    close();
+    this->hide();
+    MainMenu* mainmenu = new MainMenu(nullptr,socket);
+    mainmenu->show();
+    this->deleteLater();
 }
