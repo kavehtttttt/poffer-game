@@ -217,7 +217,19 @@ void signup::handleSignUp()
 void signup::handleServerResponse()
 {
     QByteArray response = socket->readAll();
-    QMessageBox::information(this, "Server Response", QString::fromUtf8(response));
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(response, &parseError);
+
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QMessageBox::warning(this, "Error", "Invalid response from server.");
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+    QString message = obj.value("message").toString("No message received");
+
+    QMessageBox::information(this, "Sign Up Result", message);
 }
+
 
 signup::~signup() {}

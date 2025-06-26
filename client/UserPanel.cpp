@@ -1,14 +1,52 @@
 #include "UserPanel.h"
 #include "EditInfo.h"
-#include "mainmenu.h"
+#include "HistoryView.h"
+#include "MainMenu.h"
+
 #include <QFont>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QPixmap>
 #include <QMessageBox>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QDebug>
 
 UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &username)
     : QMainWindow(parent), socket(socket), username(username)
+{
+    setupUI();
+    updateConnectionStatus();
+
+    connect(playButton, &QPushButton::clicked, this, &UserPanel::onPlayGameClicked);
+    connect(historyButton, &QPushButton::clicked, this, &UserPanel::onHistoryClicked);
+    connect(editInfoButton, &QPushButton::clicked, this, &UserPanel::onEditInfoClicked);
+    connect(exitButton, &QPushButton::clicked, this, &UserPanel::onExitAccountClicked);
+
+    if (socket) {
+        connect(socket, &QTcpSocket::connected, this, [this]() {
+            connectionStatusLabel->setText("Connected to server");
+            connectionStatusLabel->setStyleSheet("color: lightgreen; font-weight: bold;");
+        });
+
+        connect(socket, &QTcpSocket::disconnected, this, [this]() {
+            connectionStatusLabel->setText("Disconnected from server");
+            connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
+        });
+
+        connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+            connectionStatusLabel->setText("Connection error");
+            connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+        });
+    }
+}
+
+UserPanel::~UserPanel()
+{
+    // Clean up if needed
+}
+
+void UserPanel::setupUI()
 {
     setFixedSize(800, 600);
     setWindowTitle("Welcome, " + username);
@@ -26,17 +64,6 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
     connectionStatusLabel->setAlignment(Qt::AlignLeft);
     connectionStatusLabel->setGeometry(10, 10, 300, 20);
     connectionStatusLabel->setStyleSheet("color: white; background: transparent;");
-
-    if (!socket) {
-        connectionStatusLabel->setText("Socket is null!");
-        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
-    } else if (socket->state() == QAbstractSocket::ConnectedState) {
-        connectionStatusLabel->setText("Connected to server");
-        connectionStatusLabel->setStyleSheet("color: lightgreen; font-weight: bold;");
-    } else {
-        connectionStatusLabel->setText("Connecting...");
-        connectionStatusLabel->setStyleSheet("color: gray; font-weight: bold;");
-    }
 
     QFont btnFont("Georgia", 16, QFont::Bold);
 
@@ -117,29 +144,21 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
     centralLayout->setContentsMargins(0, 0, 0, 0);
     centralLayout->setSpacing(0);
     centralWidget->setLayout(centralLayout);
-
-    connect(playButton, &QPushButton::clicked, this, &UserPanel::onPlayGameClicked);
-    connect(historyButton, &QPushButton::clicked, this, &UserPanel::onHistoryClicked);
-    connect(editInfoButton, &QPushButton::clicked, this, &UserPanel::onEditInfoClicked);
-    connect(exitButton, &QPushButton::clicked, this, &UserPanel::onExitAccountClicked);
-
-    connect(socket, &QTcpSocket::connected, this, [this]() {
-        connectionStatusLabel->setText("Connected to server");
-        connectionStatusLabel->setStyleSheet("color: lightgreen; font-weight: bold;");
-    });
-
-    connect(socket, &QTcpSocket::disconnected, this, [this]() {
-        connectionStatusLabel->setText("Disconnected from server");
-        connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
-    });
-
-    connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        connectionStatusLabel->setText("Connection error");
-        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
-    });
 }
 
-UserPanel::~UserPanel(){}
+void UserPanel::updateConnectionStatus()
+{
+    if (!socket) {
+        connectionStatusLabel->setText("Socket is null!");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    } else if (socket->state() == QAbstractSocket::ConnectedState) {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: lightgreen; font-weight: bold;");
+    } else {
+        connectionStatusLabel->setText("Connecting...");
+        connectionStatusLabel->setStyleSheet("color: gray; font-weight: bold;");
+    }
+}
 
 void UserPanel::onPlayGameClicked()
 {
@@ -148,22 +167,94 @@ void UserPanel::onPlayGameClicked()
 
 void UserPanel::onHistoryClicked()
 {
-    QMessageBox::information(this, "History", "You clicked History.");
+    this->hide();
+    HistoryView* historyview = new  HistoryView(nullptr, socket, username);
+    historyview->show();
+    this->deleteLater();
 }
 
 void UserPanel::onEditInfoClicked()
 {
     this->hide();
-    EditInfo* editinfo = new EditInfo(nullptr,socket,username);
+    EditInfo* editinfo = new EditInfo(nullptr, socket, username);
     editinfo->show();
     this->deleteLater();
-
 }
 
 void UserPanel::onExitAccountClicked()
 {
-    this->hide();
-    MainMenu* mainmenu = new MainMenu(nullptr,socket);
-    mainmenu->show();
-    this->deleteLater();
+    if (!socket) {
+        QMessageBox::warning(this, "Error", "Socket not available.");
+        return;
+    }
+
+    // ساخت پیام logout به صورت JSON
+    QJsonObject json;
+    json["type"] = "logout";
+    json["username"] = username;
+
+    QJsonDocument doc(json);
+    socket->write(doc.toJson(QJsonDocument::Compact));
+    socket->flush();
+
+    // غیر فعال کردن دکمه‌ها تا دریافت پاسخ
+    playButton->setEnabled(false);
+    historyButton->setEnabled(false);
+    editInfoButton->setEnabled(false);
+    exitButton->setEnabled(false);
+
+    // اتصال به readyRead برای دریافت پاسخ سرور (با Qt::UniqueConnection که چند اتصال نداشته باشیم)
+    connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleLogoutResponse, Qt::UniqueConnection);
+}
+
+void UserPanel::handleLogoutResponse()
+{
+    QByteArray responseData = socket->readAll();
+
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    if (!doc.isObject()) {
+        QMessageBox::warning(this, "Server Error", "Invalid response from server.");
+        // فعال کردن دکمه‌ها مجدد
+        playButton->setEnabled(true);
+        historyButton->setEnabled(true);
+        editInfoButton->setEnabled(true);
+        exitButton->setEnabled(true);
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+
+    if (obj.contains("status") && obj.contains("message")) {
+        QString status = obj["status"].toString();
+        QString message = obj["message"].toString();
+
+        if (status == "success") {
+            QMessageBox::information(this, "Logout", message);
+
+            // باز کردن صفحه MainMenu
+            this->hide();
+            MainMenu* mainmenu = new MainMenu(nullptr, socket);
+            mainmenu->show();
+            this->deleteLater();
+        } else {
+            QMessageBox::warning(this, "Logout Failed", message);
+
+            // فعال کردن دکمه‌ها مجدد
+            playButton->setEnabled(true);
+            historyButton->setEnabled(true);
+            editInfoButton->setEnabled(true);
+            exitButton->setEnabled(true);
+        }
+    } else {
+        QMessageBox::warning(this, "Server Error", "Unexpected response format.");
+
+        // فعال کردن دکمه‌ها مجدد
+        playButton->setEnabled(true);
+        historyButton->setEnabled(true);
+        editInfoButton->setEnabled(true);
+        exitButton->setEnabled(true);
+    }
+
+    // جدا کردن کانکت پس از دریافت پاسخ
+    disconnect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleLogoutResponse);
 }

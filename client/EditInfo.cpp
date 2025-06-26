@@ -1,6 +1,5 @@
 #include "EditInfo.h"
 #include "UserPanel.h"
-
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QMessageBox>
@@ -11,7 +10,7 @@
 EditInfo::EditInfo(QWidget *parent, QTcpSocket *socket, const QString &username)
     : QWidget(parent), socket(socket), username(username)
 {
-    setWindowTitle("Edit Your Information,"+ username+"!");
+    setWindowTitle("Edit Your Information, " + username + "!");
     setFixedSize(800, 600);
 
     QLabel *backgroundLabel = new QLabel(this);
@@ -48,7 +47,10 @@ EditInfo::EditInfo(QWidget *parent, QTcpSocket *socket, const QString &username)
     submitButton = new QPushButton("Edit", this);
     submitButton->setFont(QFont("Georgia", 12, QFont::Bold));
     submitButton->setMinimumHeight(42);
-    submitButton->setStyleSheet("QPushButton { background-color: #814040; color: #fceacb; border: 2px solid #c2955d; border-radius: 10px; padding: 10px; } QPushButton:hover { background-color: #a0522d; }");
+    submitButton->setStyleSheet(
+        "QPushButton { background-color: #814040; color: #fceacb; border: 2px solid #c2955d; border-radius: 10px; padding: 10px; } "
+        "QPushButton:hover { background-color: #a0522d; }"
+        );
     formLayout->addWidget(submitButton);
 
     connectionStatusLabel = new QLabel(this);
@@ -85,6 +87,9 @@ EditInfo::EditInfo(QWidget *parent, QTcpSocket *socket, const QString &username)
     connect(backButton, &QPushButton::clicked, this, &EditInfo::goBack);
     connect(submitButton, &QPushButton::clicked, this, &EditInfo::handleEditRequest);
     connectAllCheckboxes();
+
+    // اینجا کانکت برای دریافت پاسخ از سرور
+    connect(socket, &QTcpSocket::readyRead, this, &EditInfo::handleServerResponse);
 }
 
 void EditInfo::setupField(QVBoxLayout *layout, QLineEdit *&edit, QCheckBox *&check, const QString &placeholder, bool isPassword)
@@ -179,17 +184,43 @@ void EditInfo::handleEditRequest()
         socket->write(doc.toJson(QJsonDocument::Compact));
         socket->flush();
 
-        QMessageBox::information(this, "Edit Sent", "Edit request sent to server.");
+        // پیام اینجا حذف شده — حالا پیام بعد از پاسخ سرور نمایش داده می‌شود.
 
     } catch (const std::exception &ex) {
         QMessageBox::warning(this, "Validation Error", ex.what());
     }
 }
 
+void EditInfo::handleServerResponse()
+{
+    QByteArray responseData = socket->readAll();
+
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    if (!doc.isObject()) {
+        QMessageBox::warning(this, "Server Error", "Invalid response from server.");
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+
+    if (obj.contains("status") && obj.contains("message")) {
+        QString status = obj["status"].toString();
+        QString message = obj["message"].toString();
+
+        if (status == "success") {
+            QMessageBox::information(this, "Success", message);
+        } else {
+            QMessageBox::warning(this, "Failed", message);
+        }
+    } else {
+        QMessageBox::warning(this, "Server Error", "Unexpected response format.");
+    }
+}
+
 void EditInfo::goBack()
 {
     this->hide();
-    UserPanel *userpanel = new UserPanel(nullptr, socket,username);
+    UserPanel *userpanel = new UserPanel(nullptr, socket, username);
     userpanel->show();
     this->deleteLater();
 }

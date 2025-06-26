@@ -11,6 +11,7 @@ CONFIG += c++17
 
 SOURCES += \
     EditInfo.cpp \
+    HistoryView.cpp \
     UserPanel.cpp \
     ValidationException.cpp \
     login.cpp \
@@ -21,6 +22,7 @@ SOURCES += \
 
 HEADERS += \
     EditInfo.h \
+    HistoryView.h \
     UserPanel.h \
     ValidationException.h \
     login.h \
@@ -32,6 +34,7 @@ FORMS += \
     UserPanel.ui \
     basewindow.ui \
     editinfo.ui \
+    historyview.ui \
     login.ui \
     mainmenu.ui \
     resetpassword.ui \
