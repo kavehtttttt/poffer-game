@@ -38,6 +38,9 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
             connectionStatusLabel->setText("Connection error");
             connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
         });
+
+        // اتصال عمومی برای دریافت همه پیام‌ها از جمله Game_Start
+        connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleServerMessage);
     }
 }
 
@@ -138,41 +141,44 @@ void UserPanel::onPlayGameClicked()
     req["type"] = "start_game";
     req["username"] = username;
 
-    QByteArray reqData = QJsonDocument(req).toJson(QJsonDocument::Compact);
+    QByteArray reqData = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
     socket->write(reqData);
     socket->flush();
-
-    connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleStartGameResponse, Qt::UniqueConnection);
 }
 
-void UserPanel::handleStartGameResponse()
+void UserPanel::handleServerMessage()
 {
-    QByteArray data = socket->readAll();
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+    while (socket->bytesAvailable()) {
+        QByteArray data = socket->readLine().trimmed(); // فرض بر اینه که سرور با \n جدا می‌کنه
+        if (data.isEmpty()) continue;
 
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        QMessageBox::warning(this, "Error", "Invalid response from server.");
-        return;
-    }
+        QJsonParseError err;
+        QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            continue;
 
-    QJsonObject obj = doc.object();
-    QString type = obj["type"].toString();
-    QString status = obj["status"].toString();
-    QString message = obj["message"].toString();
+        QJsonObject obj = doc.object();
+        QString type = obj["type"].toString();
+        QString status = obj["status"].toString();
+        QString message = obj["message"].toString();
 
-    if (type == "start_game") {
-        QMessageBox::information(this, "Game Start", message);
-
-        if (status == "success") {
+        if (type == "start_game") {
+            // فقط نمایش پیام بدون رفتن به صفحه‌ی جدید
+            QMessageBox::information(this, "Start Game", message);
+        }
+        else if (type == "Game_Start") {
+            // نمایش پیام شروع بازی و رفتن به WaitingRoom
+            QMessageBox::information(this, "Game Starting", message);
             this->hide();
             auto *wr = new WaitingRoom(nullptr, socket, username);
             wr->show();
             this->deleteLater();
+            return; // دیگر ادامه نده چون this نابود شده
+        }
+        else if (type == "error") {
+            QMessageBox::warning(this, "Error", message);
         }
     }
-
-    disconnect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleStartGameResponse);
 }
 
 void UserPanel::onHistoryClicked()
