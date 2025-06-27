@@ -22,7 +22,7 @@ protected:
 private slots:
     void handleMessage(chanells* source, QString msg);
     void handleDisconnection();
-    void notifyWaitingClients(); // New slot to send waiting list updates
+
 
 private:
     QList<chanells*> clients;
