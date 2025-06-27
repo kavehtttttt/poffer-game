@@ -9,17 +9,10 @@
 class UserPanel : public QMainWindow
 {
     Q_OBJECT
+
 public:
     explicit UserPanel(QWidget *parent = nullptr, QTcpSocket *socket = nullptr, const QString &username = "");
-
     ~UserPanel();
-
-private slots:
-    void onPlayGameClicked();
-    void onHistoryClicked();
-    void onEditInfoClicked();
-    void onExitAccountClicked();
-    void handleLogoutResponse();
 
 private:
     QTcpSocket *socket;
@@ -36,6 +29,13 @@ private:
 
     void setupUI();
     void updateConnectionStatus();
+
+private slots:
+    void onPlayGameClicked();
+    void handleStartGameResponse();
+    void onHistoryClicked();
+    void onEditInfoClicked();
+    void onExitAccountClicked();
 };
 
 #endif // USERPANEL_H

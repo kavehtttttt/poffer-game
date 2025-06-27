@@ -2,7 +2,7 @@
 #include "EditInfo.h"
 #include "HistoryView.h"
 #include "MainMenu.h"
-
+#include "WaitingRoom.h"
 #include <QFont>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -41,10 +41,7 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
     }
 }
 
-UserPanel::~UserPanel()
-{
-    // Clean up if needed
-}
+UserPanel::~UserPanel() {}
 
 void UserPanel::setupUI()
 {
@@ -75,48 +72,19 @@ void UserPanel::setupUI()
     QPushButton* buttons[] = {playButton, historyButton, editInfoButton};
 
     QString btnStyle =
-        "QPushButton {"
-        " background-color: #4e3b2b;"
-        " color: #fceacb;"
-        " border: 2px solid #d2a679;"
-        " border-radius: 20px;"
-        " min-width: 150px;"
-        " min-height: 60px;"
-        " font-weight: bold;"
-        " letter-spacing: 1px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #6b4c35;"
-        " border: 2px solid #e6c27a;"
-        "}"
-        "QPushButton:pressed {"
-        " background-color: #3a2a1e;"
-        " border-style: inset;"
-        "}";
+        "QPushButton { background-color: #4e3b2b; color: #fceacb; border: 2px solid #d2a679; "
+        "border-radius: 20px; min-width: 150px; min-height: 60px; font-weight: bold; letter-spacing: 1px; }"
+        "QPushButton:hover { background-color: #6b4c35; border: 2px solid #e6c27a; }"
+        "QPushButton:pressed { background-color: #3a2a1e; border-style: inset; }";
 
     QString exitBtnStyle =
-        "QPushButton {"
-        " background-color: #8B0000;"
-        " color: #fff2e6;"
-        " border: 2px solid #b30000;"
-        " border-radius: 20px;"
-        " min-width: 150px;"
-        " min-height: 60px;"
-        " font-weight: bold;"
-        " letter-spacing: 1px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #a00000;"
-        "}"
-        "QPushButton:pressed {"
-        " background-color: #600000;"
-        " border-style: inset;"
-        "}";
+        "QPushButton { background-color: #8B0000; color: #fff2e6; border: 2px solid #b30000; "
+        "border-radius: 20px; min-width: 150px; min-height: 60px; font-weight: bold; letter-spacing: 1px; }"
+        "QPushButton:hover { background-color: #a00000; }"
+        "QPushButton:pressed { background-color: #600000; border-style: inset; }";
 
-    for (QPushButton* btn : buttons) {
-        btn->setFont(btnFont);
-        btn->setStyleSheet(btnStyle);
-    }
+    for (QPushButton* btn : buttons)
+        btn->setFont(btnFont), btn->setStyleSheet(btnStyle);
 
     exitButton->setFont(btnFont);
     exitButton->setStyleSheet(exitBtnStyle);
@@ -134,7 +102,6 @@ void UserPanel::setupUI()
     buttonLayout->addSpacing(10);
     buttonLayout->addWidget(exitButton);
     buttonLayout->addStretch();
-
     buttonLayout->setContentsMargins(20, 500, 20, 30);
     buttonLayout->setSpacing(15);
     buttonsWidget->setLayout(buttonLayout);
@@ -162,99 +129,72 @@ void UserPanel::updateConnectionStatus()
 
 void UserPanel::onPlayGameClicked()
 {
-    QMessageBox::information(this, "Play Game", "You clicked Play Game.");
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        QMessageBox::warning(this, "Error", "Not connected to server.");
+        return;
+    }
+
+    QJsonObject req;
+    req["type"] = "start_game";
+    req["username"] = username;
+
+    QByteArray reqData = QJsonDocument(req).toJson(QJsonDocument::Compact);
+    socket->write(reqData);
+    socket->flush();
+
+    connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleStartGameResponse, Qt::UniqueConnection);
+}
+
+void UserPanel::handleStartGameResponse()
+{
+    QByteArray data = socket->readAll();
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        QMessageBox::warning(this, "Error", "Invalid response from server.");
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+    QString type = obj["type"].toString();
+    QString status = obj["status"].toString();
+    QString message = obj["message"].toString();
+
+    if (type == "start_game") {
+        QMessageBox::information(this, "Game Start", message);
+
+        if (status == "success") {
+            this->hide();
+            auto *wr = new WaitingRoom(nullptr, socket, username);
+            wr->show();
+            this->deleteLater();
+        }
+    }
+
+    disconnect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleStartGameResponse);
 }
 
 void UserPanel::onHistoryClicked()
 {
     this->hide();
-    HistoryView* historyview = new  HistoryView(nullptr, socket, username);
-    historyview->show();
+    auto *history = new HistoryView(nullptr, socket, username);
+    history->show();
     this->deleteLater();
 }
 
 void UserPanel::onEditInfoClicked()
 {
     this->hide();
-    EditInfo* editinfo = new EditInfo(nullptr, socket, username);
-    editinfo->show();
+    auto *edit = new EditInfo(nullptr, socket, username);
+    edit->show();
     this->deleteLater();
 }
 
 void UserPanel::onExitAccountClicked()
 {
-    if (!socket) {
-        QMessageBox::warning(this, "Error", "Socket not available.");
-        return;
-    }
-
-    // ساخت پیام logout به صورت JSON
-    QJsonObject json;
-    json["type"] = "logout";
-    json["username"] = username;
-
-    QJsonDocument doc(json);
-    socket->write(doc.toJson(QJsonDocument::Compact));
-    socket->flush();
-
-    // غیر فعال کردن دکمه‌ها تا دریافت پاسخ
-    playButton->setEnabled(false);
-    historyButton->setEnabled(false);
-    editInfoButton->setEnabled(false);
-    exitButton->setEnabled(false);
-
-    // اتصال به readyRead برای دریافت پاسخ سرور (با Qt::UniqueConnection که چند اتصال نداشته باشیم)
-    connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleLogoutResponse, Qt::UniqueConnection);
-}
-
-void UserPanel::handleLogoutResponse()
-{
-    QByteArray responseData = socket->readAll();
-
-    QJsonDocument doc = QJsonDocument::fromJson(responseData);
-    if (!doc.isObject()) {
-        QMessageBox::warning(this, "Server Error", "Invalid response from server.");
-        // فعال کردن دکمه‌ها مجدد
-        playButton->setEnabled(true);
-        historyButton->setEnabled(true);
-        editInfoButton->setEnabled(true);
-        exitButton->setEnabled(true);
-        return;
-    }
-
-    QJsonObject obj = doc.object();
-
-    if (obj.contains("status") && obj.contains("message")) {
-        QString status = obj["status"].toString();
-        QString message = obj["message"].toString();
-
-        if (status == "success") {
-            QMessageBox::information(this, "Logout", message);
-
-            // باز کردن صفحه MainMenu
-            this->hide();
-            MainMenu* mainmenu = new MainMenu(nullptr, socket);
-            mainmenu->show();
-            this->deleteLater();
-        } else {
-            QMessageBox::warning(this, "Logout Failed", message);
-
-            // فعال کردن دکمه‌ها مجدد
-            playButton->setEnabled(true);
-            historyButton->setEnabled(true);
-            editInfoButton->setEnabled(true);
-            exitButton->setEnabled(true);
-        }
-    } else {
-        QMessageBox::warning(this, "Server Error", "Unexpected response format.");
-
-        // فعال کردن دکمه‌ها مجدد
-        playButton->setEnabled(true);
-        historyButton->setEnabled(true);
-        editInfoButton->setEnabled(true);
-        exitButton->setEnabled(true);
-    }
-
-    // جدا کردن کانکت پس از دریافت پاسخ
-    disconnect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleLogoutResponse);
+    this->hide();
+    auto *menu = new MainMenu(nullptr, socket);
+    menu->show();
+    this->deleteLater();
 }

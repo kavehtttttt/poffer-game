@@ -14,6 +14,7 @@ SOURCES += \
     HistoryView.cpp \
     UserPanel.cpp \
     ValidationException.cpp \
+    WaitingRoom.cpp \
     login.cpp \
     main.cpp \
     mainmenu.cpp \
@@ -25,6 +26,7 @@ HEADERS += \
     HistoryView.h \
     UserPanel.h \
     ValidationException.h \
+    WaitingRoom.h \
     login.h \
     mainmenu.h \
     resetpassword.h \
@@ -38,7 +40,8 @@ FORMS += \
     login.ui \
     mainmenu.ui \
     resetpassword.ui \
-    signup.ui
+    signup.ui \
+    waitingroom.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
