@@ -39,15 +39,19 @@ void Server::incomingConnection(qintptr socketDescriptor)
 
     connect(channel, &chanells::messageReceived, this, &Server::handleMessage);
     connect(channel, &chanells::disconnected, this, &Server::handleDisconnection);
+
+    channel->start(); // Ensure chanells starts its communication thread/loop
 }
 
 void Server::handleMessage(chanells* source, QString msg)
 {
+    // Debug: Print raw message received
     qDebug() << "From client:" << source->getUsername() << "->" << msg;
+
     QJsonParseError error;
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError) {
-        qDebug() << "Invalid JSON format";
+        qDebug() << "Invalid JSON format received. Error:" << error.errorString();
         QJsonObject response = QJsonObject{{"type", "error"}, {"message", "Invalid JSON format"}};
         QJsonDocument docRes(response);
         source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
@@ -57,6 +61,9 @@ void Server::handleMessage(chanells* source, QString msg)
     QJsonObject obj = doc.object();
     QString type = obj["type"].toString();
     QJsonObject response;
+
+    // Debug: Print message type
+    qDebug() << "Processing message type:" << type;
 
     try {
         if (type == "login") {
@@ -140,19 +147,23 @@ void Server::handleMessage(chanells* source, QString msg)
         else if (type == "Player_Selected_Card") {
             QString username = source->getUsername();
             QJsonObject cardObj = obj["card"].toObject();
-
-            bool handled = false;
-            for (GameSession* session : gameManager->getActiveGameSessions()) {
-                if (session->getPlayersMap().contains(username)) {
-                    session->processClientAction(username, obj);
-                    handled = true;
-                    response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "success"}};
-                    break;
+            if (cardObj.isEmpty()) {
+                qWarning() << "Received Player_Selected_Card, but 'card' object is missing or invalid.";
+                response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "error"}, {"message", "Invalid card data."}};
+            } else {
+                bool handled = false;
+                for (GameSession* session : gameManager->getActiveGameSessions()) {
+                    if (session->getPlayersMap().contains(username)) {
+                        session->processClientAction(username, obj);
+                        handled = true;
+                        response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "success"}};
+                        break;
+                    }
                 }
-            }
-            if (!handled) {
-                qWarning() << "Received card selection from" << username << "but no active game session found for them.";
-                response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "error"}, {"message", "No active game session."}};
+                if (!handled) {
+                    qWarning() << "Received card selection from" << username << "but no active game session found for them.";
+                    response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "error"}, {"message", "No active game session."}};
+                }
             }
         }
         else {
@@ -198,7 +209,6 @@ void Server::handleDisconnection()
     {
         qDebug() << "Client" << channel->getUsername() << "disconnected. Removing from list.";
         gameManager->removePlayerFromWaitingRoom(channel->getUsername());
-
         clients.removeOne(channel);
         channel->deleteLater();
     }
