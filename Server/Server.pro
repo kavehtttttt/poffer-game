@@ -12,7 +12,9 @@ CONFIG += c++17
 SOURCES += \
     Card.cpp \
     Deck.cpp \
+    GameException.cpp \
     GameHistoryEntry.cpp \
+    GameManager.cpp \
     GameSession.cpp \
     Hand.cpp \
     PlayerInGame.cpp \
@@ -30,7 +32,9 @@ SOURCES += \
 HEADERS += \
     Card.h \
     Deck.h \
+    GameException.h \
     GameHistoryEntry.h \
+    GameManager.h \
     GameSession.h \
     Hand.h \
     PlayerInGame.h \

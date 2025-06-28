@@ -6,6 +6,7 @@
 #include "Users.h"
 #include "UserException.h"
 #include "GameHistoryEntry.h"
+
 class Account : public QObject
 {
     Q_OBJECT
@@ -23,7 +24,6 @@ public:
     QJsonObject editFirstName(const QJsonObject& data);
     QJsonObject editLastName(const QJsonObject& data);
 
-    // New methods for Game History
     QJsonObject getGameHistory(const QJsonObject& data);
     QJsonObject addGameHistory(const QJsonObject& data);
 

@@ -13,6 +13,9 @@ public:
     Deck();
     void initializeDeck();
     void shuffle();
+    int size() const;
+    bool isEmpty() const;
+    void resetDeck();
     QList<Card>dealCards(int count);
 private:
     QList<Card> Cards;

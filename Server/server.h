@@ -3,10 +3,11 @@
 
 #include <QTcpServer>
 #include <QList>
-#include <QMap> // Added for QMap
+#include <QMap>
 #include "chanells.h"
 #include "Users.h"
 #include "Account.h"
+#include "GameManager.h"
 
 class Server : public QTcpServer
 {
@@ -23,12 +24,12 @@ private slots:
     void handleMessage(chanells* source, QString msg);
     void handleDisconnection();
 
-
 private:
     QList<chanells*> clients;
-    QMap<QString, chanells*> waitingClients; // Map to store clients in waiting room (username to channel)
+    QMap<QString, chanells*> waitingClients;
     Users* users;
     Account* account;
+    GameManager* gameManager;
 };
 
 #endif // SERVER_H

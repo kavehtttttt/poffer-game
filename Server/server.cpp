@@ -5,12 +5,17 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QMap>
+
+#include "GameManager.h"
+#include "GameSession.h"
 
 Server::Server(QObject *parent)
     : QTcpServer(parent)
 {
     users = new Users(this);
     account = new Account(users, this);
+    gameManager = new GameManager(users, this);
 }
 
 void Server::startServer()
@@ -34,8 +39,6 @@ void Server::incomingConnection(qintptr socketDescriptor)
 
     connect(channel, &chanells::messageReceived, this, &Server::handleMessage);
     connect(channel, &chanells::disconnected, this, &Server::handleDisconnection);
-
-    channel->start();
 }
 
 void Server::handleMessage(chanells* source, QString msg)
@@ -64,9 +67,7 @@ void Server::handleMessage(chanells* source, QString msg)
         }
         else if (type == "logout") {
             response = account->logout(obj);
-            if (waitingClients.contains(source->getUsername())) {
-                waitingClients.remove(source->getUsername());
-            }
+            gameManager->removePlayerFromWaitingRoom(source->getUsername());
             source->setUsername("unknown");
         }
         else if (type == "signup") {
@@ -80,13 +81,9 @@ void Server::handleMessage(chanells* source, QString msg)
             response = account->editUsername(obj);
             if(response["status"]=="success"){
                 QString newUsername = obj["new_username"].toString();
-                if (waitingClients.contains(oldUsername)) {
-                    chanells* channel = waitingClients.take(oldUsername);
-                    channel->setUsername(newUsername);
-                    waitingClients.insert(newUsername, channel);
-                } else {
-                    source->setUsername(newUsername);
-                }
+                gameManager->removePlayerFromWaitingRoom(oldUsername);
+                gameManager->addPlayerToWaitingRoom(source, newUsername);
+                source->setUsername(newUsername);
             }
         }
         else if (type == "Edit_password") {
@@ -118,45 +115,15 @@ void Server::handleMessage(chanells* source, QString msg)
                     {"status", "error"},
                     {"message", "Please log in first to start a game."}
                 };
-            } else if (waitingClients.contains(username)) {
-                response = QJsonObject{
-                    {"type", "start_game"},
-                    {"status", "info"},
-                    {"message", "You are already in the game queue. Waiting for other players..."}
-                };
             } else {
-                waitingClients.insert(username, source);
-                qDebug() << "Player" << username << "added to game queue. Current players:" << waitingClients.size();
-
-                if (waitingClients.size() == 4) {
-                    QJsonObject gameStartResponse = QJsonObject{
-                        {"type", "Game_Start"},
-                        {"status", "success"},
-                        {"message", "Game starting! Get ready!"},
-                        {"players", QJsonArray::fromStringList(waitingClients.keys())}
-                    };
-                    QJsonDocument gameStartDoc(gameStartResponse);
-                    QString gameStartMsg = QString::fromUtf8(gameStartDoc.toJson(QJsonDocument::Compact));
-
-                    qDebug() << "Enough players (4) to start game. Sending Game_Start to all.";
-                    for (chanells* waitingChannel : waitingClients.values()) {
-                        waitingChannel->sendMessage(gameStartMsg);
-                    }
-                    waitingClients.clear();
-                    response = QJsonObject{};
-                } else {
-                    response = QJsonObject{
-                        {"type", "start_game"},
-                        {"status", "success"},
-                        {"message", QString("You have joined the game queue. Waiting for %1 more players...").arg(4 - waitingClients.size())}
-                    };
-                }
+                gameManager->addPlayerToWaitingRoom(source, username);
+                return;
             }
         }
         else if (type == "leave_waiting_room") {
             QString username = source->getUsername();
-            if (!username.isEmpty() && username != "unknown" && waitingClients.contains(username)) {
-                waitingClients.remove(username);
+            if (!username.isEmpty() && username != "unknown") {
+                gameManager->removePlayerFromWaitingRoom(username);
                 response = QJsonObject{
                     {"type", "leave_waiting_room"},
                     {"status", "success"},
@@ -168,6 +135,24 @@ void Server::handleMessage(chanells* source, QString msg)
                     {"status", "error"},
                     {"message", "Could not leave game queue (not in it or not logged in)."}
                 };
+            }
+        }
+        else if (type == "Player_Selected_Card") {
+            QString username = source->getUsername();
+            QJsonObject cardObj = obj["card"].toObject();
+
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                if (session->getPlayersMap().contains(username)) {
+                    session->processClientAction(username, obj);
+                    handled = true;
+                    response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "success"}};
+                    break;
+                }
+            }
+            if (!handled) {
+                qWarning() << "Received card selection from" << username << "but no active game session found for them.";
+                response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "error"}, {"message", "No active game session."}};
             }
         }
         else {
@@ -184,6 +169,20 @@ void Server::handleMessage(chanells* source, QString msg)
             {"message", ex.what()}
         };
     }
+    catch (const GameException& ex) {
+        response = QJsonObject{
+            {"type", type},
+            {"status", "error"},
+            {"message", QString("Game Error: %1").arg(ex.what())}
+        };
+    }
+    catch (const std::exception& ex) {
+        response = QJsonObject{
+            {"type", type},
+            {"status", "error"},
+            {"message", QString("Server Error: %1").arg(ex.what())}
+        };
+    }
 
     if (!response.isEmpty()) {
         QJsonDocument docRes(response);
@@ -198,9 +197,8 @@ void Server::handleDisconnection()
     if (channel)
     {
         qDebug() << "Client" << channel->getUsername() << "disconnected. Removing from list.";
-        if (waitingClients.contains(channel->getUsername())) {
-            waitingClients.remove(channel->getUsername());
-        }
+        gameManager->removePlayerFromWaitingRoom(channel->getUsername());
+
         clients.removeOne(channel);
         channel->deleteLater();
     }

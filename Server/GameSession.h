@@ -9,6 +9,9 @@
 #include "Deck.h"
 #include "GameHistoryEntry.h"
 #include "Users.h"
+#include "chanells.h"
+#include "GameException.h"
+#include"Pofferrankevaluator.h"
 
 class GameSession : public QObject
 {
@@ -18,6 +21,10 @@ public:
 
     void startGame();
     void startRound();
+
+    void processClientAction(const QString& username, const QJsonObject& actionData);
+
+    QMap<QString, PlayerInGame*> getPlayersMap() const;
 
 signals:
     void gameEnded(QString winnerUsername);

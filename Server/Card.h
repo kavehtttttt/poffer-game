@@ -2,6 +2,7 @@
 #define CARD_H
 
 #include <QString>
+#include <QJsonObject>
 
 enum class CardSuit {
     Diamond = 0,
@@ -41,6 +42,7 @@ public:
     bool isSameRank(const Card& other) const;
 
     QString toString() const;
+    QJsonObject toJson() const;
 
     bool operator==(const Card& other) const;
 

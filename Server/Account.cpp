@@ -54,7 +54,7 @@ QJsonObject Account::forgetpass(const QJsonObject& data) {
 
 QJsonObject Account::logout(const QJsonObject& data) {
     QString username = data["username"].toString();
-    if (username.isEmpty()) { // Basic validation
+    if (username.isEmpty()) {
         throw UserException("Username cannot be empty for logout!");
     }
     if (!usersRef->Is_User(username)) {
@@ -240,13 +240,11 @@ QJsonObject Account::addGameHistory(const QJsonObject& data) {
 
     GameHistoryEntry entry;
     entry.opponentUsername = data["opponent_username"].toString();
-
     entry.dateOfPlay = QDateTime::fromString(data["date_of_play"].toString(), Qt::ISODate);
     if (!entry.dateOfPlay.isValid()) {
         entry.dateOfPlay = QDateTime::currentDateTime();
     }
 
-    // Assuming round_results is a QJsonArray in the incoming data
     if (data.contains("round_results") && data["round_results"].isArray()) {
         QJsonArray roundsArray = data["round_results"].toArray();
         for(const QJsonValue& val : roundsArray) {
@@ -257,7 +255,6 @@ QJsonObject Account::addGameHistory(const QJsonObject& data) {
     }
 
     entry.finalResult = data["final_result"].toString();
-
 
     if (entry.opponentUsername.isEmpty() || entry.finalResult.isEmpty()) {
         throw UserException("Missing opponent username or final result for game history!");
