@@ -13,7 +13,9 @@ SOURCES += \
     Card.cpp \
     Deck.cpp \
     GameHistoryEntry.cpp \
+    GameSession.cpp \
     Hand.cpp \
+    PlayerInGame.cpp \
     Pofferrankevaluator.cpp \
     chanells.cpp \
     main.cpp \
@@ -29,7 +31,9 @@ HEADERS += \
     Card.h \
     Deck.h \
     GameHistoryEntry.h \
+    GameSession.h \
     Hand.h \
+    PlayerInGame.h \
     Pofferrankevaluator.h \
     chanells.h \
     mainwindow.h \
