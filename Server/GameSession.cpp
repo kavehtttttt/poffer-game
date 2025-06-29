@@ -74,7 +74,7 @@ void GameSession::startGame(){
     startRound();
 
     QJsonObject gameStartMessage;
-    gameStartMessage["type"] = "Game_Started";
+    gameStartMessage["type"] = "Game_Start";
     gameStartMessage["status"] = "success";
     gameStartMessage["message"] = "The game has officially started! Good luck!";
 
@@ -155,11 +155,32 @@ void GameSession::determineStartingPlayer() {
         throw GameException("Not enough diamond cards to determine starting player (deck error).");
     }
 
+    QJsonArray comparisonCardsArray;
     for (int i=0; i < m_players.size(); ++i) {
         Card dealtDiamond = allDiamondSuitCards.takeFirst();
         diamondCardsForComparison.append({m_players[i], dealtDiamond});
         qDebug() << "Player" << m_players[i]->getUsername() << "gets Diamond for comparison:" << dealtDiamond.toString();
+
+        QJsonObject playerCardObj;
+        playerCardObj["username"] = m_players[i]->getUsername();
+        playerCardObj["card"] = dealtDiamond.toJson();
+        comparisonCardsArray.append(playerCardObj);
     }
+
+
+    QJsonObject comparisonMessage;
+    comparisonMessage["type"] = "Starting_Player_Comparison_Cards";
+    comparisonMessage["message"] = "Cards dealt for determining the starting player:";
+    comparisonMessage["cards_dealt"] = comparisonCardsArray;
+    QJsonDocument doc(comparisonMessage);
+    QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    for (PlayerInGame* player : m_players) {
+        if (player->getClientChannel()) {
+            player->getClientChannel()->sendMessage(msg);
+        }
+    }
+
 
     PlayerInGame* roundStarter = nullptr;
     Card highestDiamondCard(CardSuit::Diamond, static_cast<CardRank>(CardRank::Two));
@@ -179,6 +200,20 @@ void GameSession::determineStartingPlayer() {
     if (roundStarter) {
         m_startingPlayer = roundStarter;
         qDebug() << "Starting player for Round" << m_currentRound << ":" << m_startingPlayer->getUsername();
+
+        QJsonObject startingPlayerMessage;
+        startingPlayerMessage["type"] = "Starting_Player_Determined";
+        startingPlayerMessage["username"] = m_startingPlayer->getUsername();
+        startingPlayerMessage["message"] = QString("%1 is the starting player for Round %2!").arg(m_startingPlayer->getUsername()).arg(m_currentRound);
+        QJsonDocument spDoc(startingPlayerMessage);
+        QString spMsg = QString::fromUtf8(spDoc.toJson(QJsonDocument::Compact));
+
+        for (PlayerInGame* player : m_players) {
+            if (player->getClientChannel()) {
+                player->getClientChannel()->sendMessage(spMsg);
+            }
+        }
+
     } else {
         throw GameException("Failed to determine starting player.");
     }
