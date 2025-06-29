@@ -1,19 +1,26 @@
 #include "login.h"
 #include "MainMenu.h"
+#include "UserPanel.h"
+#include "resetpassword.h"
 #include <QFont>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPixmap>
+#include <QMessageBox>
+#include <QCryptographicHash>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QDebug>
 
-Login::Login(QWidget *parent)
-    : QWidget(parent)
+Login::Login(QWidget *parent, QTcpSocket *socket)
+    : QWidget(parent), socket(socket)
 {
     setWindowTitle("Log in to your account");
     setFixedSize(800, 600);
 
     QLabel *backgroundLabel = new QLabel(this);
-    backgroundLabel->setPixmap(QPixmap(":/images/images/1000025449.png"));
+    backgroundLabel->setPixmap(QPixmap(":/images/images/1000025479.png"));
     backgroundLabel->setScaledContents(true);
     backgroundLabel->setFixedSize(800, 600);
     backgroundLabel->lower();
@@ -23,67 +30,45 @@ Login::Login(QWidget *parent)
     outerLayout->addStretch();
 
     QFrame *formFrame = new QFrame(this);
-    formFrame->setFixedSize(400, 300);
-    formFrame->setStyleSheet("QFrame { background-color: #F3E4CD; border-radius: 20px; }");
+    formFrame->setFixedSize(400, 320);
+    formFrame->setStyleSheet("QFrame { background-color: #e8d4b0; }");
 
     QVBoxLayout *formLayout = new QVBoxLayout(formFrame);
     formLayout->setContentsMargins(30, 30, 30, 30);
-    formLayout->setSpacing(12);
+    formLayout->setSpacing(15);
 
     titleLabel = new QLabel("Log In", this);
     titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setFont(QFont("Segoe UI", 22, QFont::Bold));
-    titleLabel->setStyleSheet("color: black;");
+    titleLabel->setFont(QFont("Georgia", 22, QFont::Bold));
+    titleLabel->setStyleSheet("color: #4e3b2b;");
     formLayout->addWidget(titleLabel);
 
-    QFont inputFont("Segoe UI", 12);
+    QFont inputFont("Consolas", 12);
 
     usernameEdit = new QLineEdit(this);
     usernameEdit->setPlaceholderText("Username");
     usernameEdit->setFont(inputFont);
-    usernameEdit->setMinimumHeight(38);
-    usernameEdit->setStyleSheet(
-        "QLineEdit {"
-        " background-color: white;"
-        " border: none;"
-        " border-radius: 10px;"
-        " padding: 8px;"
-        " color: black;"
-        " font-size: 13px;"
-        "}"
-        );
+    usernameEdit->setMinimumHeight(44);
+    usernameEdit->setStyleSheet("QLineEdit { background-color: #fff9f2; border: 2px solid #a67c52;"
+                                " border-radius: 10px; padding: 4px; color: #3a2a1e; font-size: 14px; }"
+                                "QLineEdit:focus { border-color: #d2a679; }");
     formLayout->addWidget(usernameEdit);
 
     passwordEdit = new QLineEdit(this);
     passwordEdit->setPlaceholderText("Password");
     passwordEdit->setEchoMode(QLineEdit::Password);
     passwordEdit->setFont(inputFont);
-    passwordEdit->setMinimumHeight(38);
-    passwordEdit->setStyleSheet(
-        "QLineEdit {"
-        " background-color: white;"
-        " border: none;"
-        " border-radius: 10px;"
-        " padding: 8px;"
-        " color: black;"
-        " font-size: 13px;"
-        "}"
-        );
+    passwordEdit->setMinimumHeight(44);
+    passwordEdit->setStyleSheet("QLineEdit { background-color: #fff9f2; border: 2px solid #a67c52;"
+                                " border-radius: 10px; padding: 4px; color: #3a2a1e; font-size: 14px; }"
+                                "QLineEdit:focus { border-color: #d2a679; }");
     formLayout->addWidget(passwordEdit);
 
-    QFont buttonFont("Segoe UI", 11, QFont::Bold);
+    QFont buttonFont("Georgia", 12, QFont::Bold);
     QString buttonStyle =
-        "QPushButton {"
-        " background-color: #AF2C2C;"
-        " color: white;"
-        " border: none;"
-        " border-radius: 10px;"
-        " padding: 10px;"
-        " font-size: 14px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: #8B1A1A;"
-        "}";
+        "QPushButton { background-color: #814040; color: #fceacb; border: 2px solid #c2955d; "
+        "border-radius: 10px; padding: 10px; }"
+        "QPushButton:hover { background-color: #a0522d; }";
 
     loginButton = new QPushButton("Log In", this);
     loginButton->setFont(buttonFont);
@@ -97,23 +82,52 @@ Login::Login(QWidget *parent)
     forgotButton->setStyleSheet(buttonStyle);
     formLayout->addWidget(forgotButton);
 
+    connectionStatusLabel = new QLabel(this);
+    connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
+    connectionStatusLabel->setAlignment(Qt::AlignCenter);
+    formLayout->addWidget(connectionStatusLabel);
+
+    if (!socket) {
+        connectionStatusLabel->setText("Socket is null!");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    } else if (socket->state() == QAbstractSocket::ConnectedState) {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    } else {
+        connectionStatusLabel->setText("Connecting...");
+        connectionStatusLabel->setStyleSheet("color: gray;");
+    }
+
+    // 🔧 رفع مشکل: قطع اتصال‌های قبلی به readyRead
+    disconnect(socket, nullptr, this, nullptr);
+
+    connect(socket, &QTcpSocket::connected, this, [this]() {
+        connectionStatusLabel->setText("Connected to server");
+        connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::disconnected, this, [this]() {
+        connectionStatusLabel->setText("Disconnected from server");
+        connectionStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        connectionStatusLabel->setText("Connection error");
+        connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
+    });
+
+    connect(socket, &QTcpSocket::readyRead, this, &Login::handleServerResponse);
+
     outerLayout->addWidget(formFrame, 0, Qt::AlignHCenter);
     outerLayout->addStretch();
 
     backButton = new QPushButton("Back", this);
-    backButton->setFont(QFont("Segoe UI", 13, QFont::Bold));
-    backButton->setMinimumSize(110, 42);
-    backButton->setStyleSheet(
-        "QPushButton {"
-        " background-color: qradialgradient(cx:0.5, cy:0.5, radius:1.0, fx:0.5, fy:0.5, stop:0 #FF6347, stop:1 #8B0000);"
-        " color: white;"
-        " border: 3px solid #FFD700;"
-        " border-radius: 20px;"
-        "}"
-        "QPushButton:hover {"
-        " background-color: qradialgradient(cx:0.5, cy:0.5, radius:1.0, fx:0.5, fy:0.5, stop:0 #FFA07A, stop:1 #B22222);"
-        "}"
-        );
+    backButton->setFont(QFont("Georgia", 12, QFont::Bold));
+    backButton->setFixedSize(100, 36);
+    backButton->setStyleSheet("QPushButton { background-color: #4e3b2b; color: #fceacb; border: 2px solid #d2a679; "
+                              "border-radius: 10px; font-weight: bold; letter-spacing: 1px; }"
+                              "QPushButton:hover { background-color: #6b4c35; border: 2px solid #e6c27a; }"
+                              "QPushButton:pressed { background-color: #3a2a1e; border-style: inset; }");
 
     QHBoxLayout *bottomLayout = new QHBoxLayout;
     bottomLayout->addWidget(backButton, 0, Qt::AlignLeft);
@@ -121,14 +135,80 @@ Login::Login(QWidget *parent)
     outerLayout->addLayout(bottomLayout);
 
     connect(backButton, &QPushButton::clicked, this, &Login::goBackToMainMenu);
+    connect(loginButton, &QPushButton::clicked, this, &Login::handleLogin);
+
+    connect(forgotButton, &QPushButton::clicked, this, [=]() {
+        // قطع اتصال قبل از رفتن به صفحه‌ی reset
+        disconnect(socket, &QTcpSocket::readyRead, this, &Login::handleServerResponse);
+
+        this->hide();
+        ResetPassword *resetPage = new ResetPassword(nullptr, socket);
+        resetPage->show();
+        this->deleteLater();
+    });
+
+}
+
+void Login::handleLogin()
+{
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        QMessageBox::warning(this, "Connection Error", "Not connected to server.");
+        return;
+    }
+
+    QString username = usernameEdit->text();
+    QString password = passwordEdit->text();
+
+    if (username.isEmpty() || password.isEmpty()) {
+        QMessageBox::warning(this, "Input Error", "Please enter both username and password.");
+        return;
+    }
+
+    QJsonObject loginJson;
+    loginJson["type"] = "login";
+    loginJson["username"] = username;
+    loginJson["password"] = password;
+
+    QJsonDocument doc(loginJson);
+    socket->write(doc.toJson(QJsonDocument::Compact));
+    socket->flush();
+}
+
+void Login::handleServerResponse()
+{
+    QByteArray response = socket->readAll();
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(response, &parseError);
+
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QMessageBox::warning(this, "Login Failed", "Invalid response from server.");
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+    QString type = obj.value("type").toString();
+    QString status = obj.value("status").toString();
+    QString message = obj.value("message").toString();
+
+    if (type == "login" && status == "success") {
+        QMessageBox::information(this, "Login", message);
+        this->hide();
+        UserPanel *panel = new UserPanel(nullptr, socket , usernameEdit->text());
+        panel->show();
+        this->deleteLater();
+    } else {
+        QMessageBox::warning(this, "Login Failed", message);
+    }
 }
 
 void Login::goBackToMainMenu()
 {
-    this->close();
-    MainMenu *mainMenu = new MainMenu();
-    mainMenu->setAttribute(Qt::WA_DeleteOnClose);
+    disconnect(socket, &QTcpSocket::readyRead, this, &Login::handleServerResponse);
+
+    this->hide();
+    MainMenu *mainMenu = new MainMenu(nullptr, socket);
     mainMenu->show();
+    this->deleteLater();
 }
 
 Login::~Login() {}

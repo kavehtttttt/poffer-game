@@ -4,13 +4,14 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QLabel>
+#include <QTcpSocket> // اضافه کن
 
 class MainMenu : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit MainMenu(QWidget *parent = nullptr);
+    explicit MainMenu(QWidget *parent = nullptr, QTcpSocket *socket = nullptr); // ← سوکت اضافه شد
     ~MainMenu();
 
 private slots:
@@ -18,8 +19,10 @@ private slots:
     void openLogin();
 
 private:
+    QTcpSocket *socket; // ← سوکت مشترک
     QWidget *centralWidget;
     QLabel *backgroundLabel;
+    QLabel *connectionStatusLabel;
 
     QPushButton *signupButton;
     QPushButton *loginButton;
