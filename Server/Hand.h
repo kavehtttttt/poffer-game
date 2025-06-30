@@ -7,7 +7,7 @@
 #include "Card.h"
 
 
-class PofferRankEvaluator;
+class PofferRankEvaluator; // Forward declaration
 
 class Hand : public QObject
 {
@@ -20,7 +20,8 @@ public:
     void addCard(const Card& card);
     bool removeCard(const Card& card);
     QString getRank() const;
-    QList<Card> getCards() const;
+    QList<Card>& getCards();
+    const QList<Card>& getCards() const;
 
 signals:
 

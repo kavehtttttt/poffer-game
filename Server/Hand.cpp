@@ -37,7 +37,14 @@ QString Hand::getRank() const
     return result.description;
 }
 
-QList<Card> Hand::getCards() const
+
+QList<Card>& Hand::getCards()
+{
+    return m_cards;
+}
+
+
+const QList<Card>& Hand::getCards() const
 {
     return m_cards;
 }

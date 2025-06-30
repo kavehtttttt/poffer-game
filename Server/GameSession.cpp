@@ -294,30 +294,50 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
 
     if (m_cardsSelectedInCurrentSequence == m_players.size() * 5) {
         qDebug() << "All 20 cards selected for current round. Evaluating round.";
+        player->clearHand();
         evaluateRound();
-    } else {
+    }
+
+    else if (m_cardsSelectedInCurrentSequence % 4 == 0) {
+
+        player->clearHand();
+        qDebug() << "Discarding remaining cards from" << player->getUsername() << "as sequence ended.";
+
+
+        int nextSequenceStarterIndex = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
+        PlayerInGame* nextSequenceStarter = m_players[nextSequenceStarterIndex];
+
+
+        QList<Card> newSevenCards = m_deck.dealCards(7);
+        nextSequenceStarter->receiveCards(newSevenCards);
+
+        qDebug() << "Dealing 7 new cards to" << nextSequenceStarter->getUsername() << " for next sequence.";
+
+
+        m_currentPlayerTurn = nextSequenceStarter;
+
+        QJsonObject turnMsg;
+        turnMsg["type"] = "Your_Turn";
+        turnMsg["message"] = "It's your turn to select a card for the next sequence!"; // پیام مناسب
+        QJsonArray cardsInHandArray;
+        for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
+            cardsInHandArray.append(card.toJson());
+        }
+        turnMsg["cards_in_hand"] = cardsInHandArray;
+        QJsonDocument turnDoc(turnMsg);
+        m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
+        m_turnTimer.start(20 * 1000);
+    }
+
+    else {
+        QList<Card> cardsToPass = player->getHand()->getCards();
+        player->clearHand();
+
         int currentPlayerIndex = m_players.indexOf(player);
         PlayerInGame* nextPlayerInSequence = m_players[(currentPlayerIndex + 1) % m_players.size()];
+        nextPlayerInSequence->receiveCards(cardsToPass);
 
-        if (m_cardsSelectedInCurrentSequence % 4 != 0) {
-            QList<Card> cardsToPass = player->getHand()->getCards();
-            player->clearHand();
-            nextPlayerInSequence->receiveCards(cardsToPass);
-
-            qDebug() << "Passing cards from" << player->getUsername() << "to" << nextPlayerInSequence->getUsername();
-        } else {
-            player->clearHand(); // Clear the last 3 cards for the 4th player in sequence
-            qDebug() << "Discarding remaining cards from" << player->getUsername() << "as sequence ended.";
-
-            int nextSequenceStarterIndex = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
-            PlayerInGame* nextSequenceStarter = m_players[nextSequenceStarterIndex];
-
-            QList<Card> newSevenCards = m_deck.dealCards(7);
-            nextSequenceStarter->receiveCards(newSevenCards);
-
-            qDebug() << "Dealing 7 new cards to" << nextSequenceStarter->getUsername() << " for next sequence.";
-            nextPlayerInSequence = nextSequenceStarter;
-        }
+        qDebug() << "Passing cards from" << player->getUsername() << "to" << nextPlayerInSequence->getUsername();
 
         m_currentPlayerTurn = nextPlayerInSequence;
         QJsonObject turnMsg;
