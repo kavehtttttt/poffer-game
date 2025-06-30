@@ -16,6 +16,7 @@ public:
     void sendMessage(const QString& msg);
     void setUsername(QString u);
     QString getUsername();
+    QTcpSocket* getSocket() const;
 
 public slots:
     void start();

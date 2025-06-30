@@ -71,7 +71,6 @@ void GameSession::processClientAction(const QString& username, const QJsonObject
 
 void GameSession::startGame(){
     m_currentRound = 1;
-    startRound();
 
     QJsonObject gameStartMessage;
     gameStartMessage["type"] = "Game_Start";
@@ -95,6 +94,7 @@ void GameSession::startGame(){
             qWarning() << "GameSession: Player" << player->getUsername() << "has no client channel. Cannot send Game_Started message.";
         }
     }
+    startRound();
 }
 
 void GameSession::startRound(){
@@ -313,16 +313,33 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
         m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
         m_turnTimer.start(20 * 1000);
     }
-    else if (m_cardsSelectedInCurrentSequence == m_players.size() * 5) {
-        qDebug() << "All 20 cards selected for current round. Evaluating round.";
-        evaluateRound();
+    else if (m_cardsSelectedInCurrentSequence % 4 == 0) {
+        if (m_cardsSelectedInCurrentSequence == m_players.size() * 5) {
+            qDebug() << "All 20 cards selected for current round. Evaluating round.";
+            evaluateRound();
+        } else {
+            int startingPlayerIndexForNextSequence = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
+            m_currentPlayerTurn = m_players[startingPlayerIndexForNextSequence];
+
+            QJsonObject turnMsg;
+            turnMsg["type"] = "Your_Turn";
+            turnMsg["message"] = "It's your turn to select a card for the next sequence!";
+            QJsonArray cardsInHandArray;
+            for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
+                cardsInHandArray.append(card.toJson());
+            }
+            turnMsg["cards_in_hand"] = cardsInHandArray;
+            QJsonDocument turnDoc(turnMsg);
+            m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
+            m_turnTimer.start(20 * 1000);
+        }
     } else {
         int currentPlayerIndex = m_players.indexOf(player);
         m_currentPlayerTurn = m_players[(currentPlayerIndex + 1) % m_players.size()];
 
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
-        turnMsg["message"] = "It's your turn to select a card for the next sequence!";
+        turnMsg["message"] = "It's your turn to select a card!";
         QJsonArray cardsInHandArray;
         for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
             cardsInHandArray.append(card.toJson());
@@ -341,7 +358,7 @@ void GameSession::evaluateRound() {
 
     for (PlayerInGame* player : m_players) {
         if (player->getHand()->getCards().size() != 5) {
-            throw GameException(QString("Player %1 has incorrect hand size for evaluation in round %2.").arg(player->getUsername()).arg(m_currentRound));
+            throw GameException(QString("Player %1 has incorrect hand size for evaluation in round %2. Hand size: %3").arg(player->getUsername()).arg(m_currentRound).arg(player->getHand()->getCards().size()));
         }
         playerRanks[player] = PofferRankEvaluator::evaluateHand(player->getHand()->getCards());
         qDebug() << "Player" << player->getUsername() << "hand rank:" << playerRanks[player].description;
@@ -380,13 +397,19 @@ void GameSession::evaluateRound() {
         } else if (m_currentRound == 3) {
             PlayerInGame* gameWinner = nullptr;
             int maxRoundsWon = -1;
+            QList<PlayerInGame*> potentialWinners;
+
             for (PlayerInGame* player : m_players) {
                 if (player->getRoundsWon() > maxRoundsWon) {
                     maxRoundsWon = player->getRoundsWon();
-                    gameWinner = player;
+                    potentialWinners.clear();
+                    potentialWinners.append(player);
                 } else if (player->getRoundsWon() == maxRoundsWon && maxRoundsWon > 0) {
-                    gameWinner = nullptr;
+                    potentialWinners.append(player);
                 }
+            }
+            if (potentialWinners.size() == 1) {
+                gameWinner = potentialWinners.first();
             }
             endGame(gameWinner);
         } else {
@@ -412,14 +435,14 @@ void GameSession::endGame(PlayerInGame* winner, bool earlyExit) {
     }
 
     QMap<QString, QString> finalRoundResults;
-    saveGameHistory(finalRoundResults, winner);
+    saveGameHistory(finalRoundResults, winner, earlyExit);
 
     emit gameEnded(winnerUsername);
 
     emit gameSessionDestroyed(this);
 }
 
-void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner) {
+void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit) {
     qDebug() << "GameSession: Saving game history.";
     QString winnerUsername = winner ? winner->getUsername() : "N/A";
 
@@ -435,21 +458,26 @@ void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResult
         }
         entry.opponentUsername = opponents.join(", ");
 
-        if (player == winner) {
+        if (earlyExit) {
+            entry.finalResult = "Incomplete/Disconnected";
+            entry.roundResults.append("Game interrupted");
+        } else if (player == winner) {
             entry.finalResult = "Win";
-        } else if (!winner && finalRoundResults.isEmpty() && m_currentRound < 3 && !m_playerInactivityCount.contains(player->getUsername())) {
-            entry.finalResult = "Draw/Incomplete";
+        } else if (!winner && !earlyExit) {
+            entry.finalResult = "Draw";
         }
         else {
             entry.finalResult = "Loss";
         }
 
-        entry.roundResults.clear();
-        for(int i = 0; i < player->getRoundsWon(); ++i) {
-            entry.roundResults.append(QString("Won Round %1").arg(i+1));
-        }
-        if (player->getRoundsWon() == 0 && entry.finalResult != "Loss") {
-            entry.roundResults.append("No Rounds Won");
+        if (!earlyExit) {
+            entry.roundResults.clear();
+            for(int i = 0; i < player->getRoundsWon(); ++i) {
+                entry.roundResults.append(QString("Won Round %1").arg(i+1));
+            }
+            if (player->getRoundsWon() == 0 && entry.finalResult != "Loss" && entry.finalResult != "Draw") { // No rounds won in a completed game (and not a loss or draw)
+                entry.roundResults.append("No Rounds Won");
+            }
         }
 
 
@@ -473,23 +501,45 @@ void GameSession::handlePlayerDisconnected(chanells* channel) {
     }
 
     if (disconnectedPlayer) {
-        qDebug() << "Player" << disconnectedPlayer->getUsername() << "disconnected. Game ending for all.";
-
-        m_players.removeOne(disconnectedPlayer);
-        m_playersMap.remove(disconnectedPlayer->getUsername());
+        qDebug() << "Player" << disconnectedPlayer->getUsername() << "disconnected. Starting 60-second timer.";
+        m_playerInactivityCount[disconnectedPlayer->getUsername()] = 0;
 
         QJsonObject disconnectMsg;
-        disconnectMsg["type"] = "Player_Disconnected";
+        disconnectMsg["type"] = "Player_Disconnected_Warning";
         disconnectMsg["username"] = disconnectedPlayer->getUsername();
-        disconnectMsg["message"] = QString("%1 has disconnected. Game ending for all players.").arg(disconnectedPlayer->getUsername());
+        disconnectMsg["message"] = QString("%1 has disconnected. Game will end in 60 seconds if they do not reconnect.").arg(disconnectedPlayer->getUsername());
         QJsonDocument doc(disconnectMsg);
         QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
         for (PlayerInGame* player : m_players) {
-            if (player->getClientChannel()) {
+            if (player->getClientChannel() && player != disconnectedPlayer) {
                 player->getClientChannel()->sendMessage(msg);
             }
         }
-        endGame(nullptr, true);
+
+
+        QTimer::singleShot(60 * 1000, this, [this, disconnectedPlayer, channel]() {
+
+            if (!m_playersMap.contains(disconnectedPlayer->getUsername())) {
+                qDebug() << "Player" << disconnectedPlayer->getUsername() << "already removed (reconnected or otherwise).";
+                return;
+            }
+
+            if (disconnectedPlayer->getClientChannel() == channel && channel->getSocket()->state() != QAbstractSocket::ConnectedState) {
+                qDebug() << "Player" << disconnectedPlayer->getUsername() << "did not reconnect within 60 seconds. Ending game.";
+                QJsonObject finalDisconnectMsg;
+                finalDisconnectMsg["type"] = "Player_Disconnected_End";
+                finalDisconnectMsg["username"] = disconnectedPlayer->getUsername();
+                finalDisconnectMsg["message"] = QString("%1 did not reconnect. Game ending for all players.").arg(disconnectedPlayer->getUsername());
+                QJsonDocument finalDoc(finalDisconnectMsg);
+                QString finalMsg = QString::fromUtf8(finalDoc.toJson(QJsonDocument::Compact));
+                for (PlayerInGame* p : m_players) {
+                    if (p->getClientChannel()) {
+                        p->getClientChannel()->sendMessage(finalMsg);
+                    }
+                }
+                endGame(nullptr, true);
+            }
+        });
     }
 }
 
@@ -537,7 +587,18 @@ void GameSession::handlePlayerTurnTimeout(PlayerInGame* player) {
         }
         m_playerInactivityCount[player->getUsername()] = 0;
     } else if (m_playerInactivityCount[player->getUsername()] > 2) {
-        qDebug() << "Player" << player->getUsername() << "lost due to repeated inactivity.";
+        qDebug() << "Player" << player->getUsername() << "lost due to repeated inactivity. Ending game for all players.";
+        QJsonObject inactivityEndMsg;
+        inactivityEndMsg["type"] = "Game_Ended_Inactivity";
+        inactivityEndMsg["username"] = player->getUsername();
+        inactivityEndMsg["message"] = QString("%1 lost due to repeated inactivity. Game ending for all players.").arg(player->getUsername());
+        QJsonDocument doc(inactivityEndMsg);
+        QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+        for (PlayerInGame* p : m_players) {
+            if (p->getClientChannel()) {
+                p->getClientChannel()->sendMessage(msg);
+            }
+        }
         endGame(nullptr, true);
     }
 }

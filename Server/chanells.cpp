@@ -55,3 +55,7 @@ void chanells::setUsername(QString u){
 QString chanells::getUsername(){
     return Username;
 }
+
+QTcpSocket* chanells::getSocket() const {
+    return socket;
+}

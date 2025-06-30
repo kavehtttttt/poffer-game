@@ -43,7 +43,7 @@ private:
     void collectPlayerSelections();
     void evaluateRound();
     void endGame(PlayerInGame* winner = nullptr, bool earlyExit = false);
-    void saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner);
+    void saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit); // Added earlyExit parameter
 
     QList<PlayerInGame*> m_players;
     QMap<QString, PlayerInGame*> m_playersMap;
