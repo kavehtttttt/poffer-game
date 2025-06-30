@@ -15,15 +15,15 @@ public:
     ~UserPanel();
 
 private slots:
-    void onPlayGameClicked(); // ارسال درخواست استارت گیم
-    void handleServerMessage(); // مدیریت همه‌ی پیام‌های دریافتی (start_game, Game_Start, error)
-    void onHistoryClicked(); // رفتن به صفحه تاریخچه
-    void onEditInfoClicked(); // رفتن به صفحه ویرایش اطلاعات
-    void onExitAccountClicked(); // خروج از حساب و برگشت به منو
+    void onPlayGameClicked();
+    void handleServerMessage();
+    void onHistoryClicked();
+    void onEditInfoClicked();
+    void onExitAccountClicked();
 
 private:
-    void setupUI(); // ساخت و تنظیم رابط کاربری
-    void updateConnectionStatus(); // به‌روزرسانی وضعیت اتصال
+    void setupUI();
+    void updateConnectionStatus();
 
     QTcpSocket *socket;
     QString username;

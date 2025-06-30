@@ -42,7 +42,6 @@ void HistoryView::setupUI()
     layout->setContentsMargins(30, 30, 30, 30);
     layout->setSpacing(10);
 
-    // عنوان داخل کادر کرمی
     QFrame *titleFrame = new QFrame(this);
     titleFrame->setStyleSheet("background-color: #e8d4b0; border-radius: 10px;");
     titleFrame->setFixedHeight(80);
@@ -56,7 +55,6 @@ void HistoryView::setupUI()
 
     layout->addWidget(titleFrame);
 
-    // کادر کرمی اطراف لیست تاریخچه
     QFrame *listFrame = new QFrame(this);
     listFrame->setStyleSheet("background-color: #fceacb; border: 2px solid #a67c52; border-radius: 10px;");
     QVBoxLayout *listLayout = new QVBoxLayout(listFrame);
@@ -71,9 +69,8 @@ void HistoryView::setupUI()
         );
 
     listLayout->addWidget(historyListWidget);
-    layout->addWidget(listFrame, 1); // به عنوان بالا چسبیده
+    layout->addWidget(listFrame, 1); // به عنوان بالا چسب
 
-    // دکمه بازگشت پایین
     backButton = new QPushButton("Back", this);
     backButton->setFixedSize(100, 36);
     backButton->setFont(QFont("Georgia", 12, QFont::Bold));

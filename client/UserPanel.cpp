@@ -2,7 +2,6 @@
 #include "EditInfo.h"
 #include "HistoryView.h"
 #include "MainMenu.h"
-#include "WaitingRoom.h"
 #include <QFont>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -11,6 +10,8 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDebug>
+#include "GameBoard.h"
+#include "qjsonarray.h"
 
 UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &username)
     : QMainWindow(parent), socket(socket), username(username)
@@ -39,7 +40,6 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
             connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
         });
 
-        // اتصال عمومی برای دریافت همه پیام‌ها از جمله Game_Start
         connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleServerMessage);
     }
 }
@@ -149,34 +149,62 @@ void UserPanel::onPlayGameClicked()
 void UserPanel::handleServerMessage()
 {
     while (socket->bytesAvailable()) {
-        QByteArray data = socket->readLine().trimmed(); // فرض بر اینه که سرور با \n جدا می‌کنه
-        if (data.isEmpty()) continue;
+        QByteArray data = socket->readAll().trimmed();
+        int startIndex = 0;
+        while (startIndex < data.size()) {
+            int openBraces = 0;
+            int endIndex = -1;
 
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError || !doc.isObject())
-            continue;
+            for (int i = startIndex; i < data.size(); ++i) {
+                if (data[i] == '{') openBraces++;
+                else if (data[i] == '}') openBraces--;
 
-        QJsonObject obj = doc.object();
-        QString type = obj["type"].toString();
-        QString status = obj["status"].toString();
-        QString message = obj["message"].toString();
+                if (openBraces == 0 && data[startIndex] == '{') {
+                    endIndex = i;
+                    break;
+                }
+            }
 
-        if (type == "start_game") {
-            // فقط نمایش پیام بدون رفتن به صفحه‌ی جدید
-            QMessageBox::information(this, "Start Game", message);
-        }
-        else if (type == "Game_Start") {
-            // نمایش پیام شروع بازی و رفتن به WaitingRoom
-            QMessageBox::information(this, "Game Starting", message);
-            this->hide();
-            auto *wr = new WaitingRoom(nullptr, socket, username);
-            wr->show();
-            this->deleteLater();
-            return; // دیگر ادامه نده چون this نابود شده
-        }
-        else if (type == "error") {
-            QMessageBox::warning(this, "Error", message);
+            if (endIndex == -1) break;
+
+            QByteArray jsonData = data.mid(startIndex, endIndex - startIndex + 1);
+            startIndex = endIndex + 1;
+
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(jsonData, &err);
+            if (err.error != QJsonParseError::NoError || !doc.isObject())
+                continue;
+
+            QJsonObject obj = doc.object();
+            QString type = obj["type"].toString();
+            QString message = obj["message"].toString();
+
+            if (type == "Game_Start") {
+                QStringList playersList;
+                if (obj.contains("players_in_game") && obj["players_in_game"].isArray()) {
+                    QJsonArray arr = obj["players_in_game"].toArray();
+                    for (const QJsonValue &val : arr)
+                        playersList.append(val.toString());
+                }
+
+                QString infoText = "✅ بازی شروع شد!\n\n👥 بازیکنان:\n";
+                for (const QString &player : playersList)
+                    infoText += "• " + player + "\n";
+
+                QMessageBox::information(this, "Game Starting", infoText);
+
+                // داده‌های باقی‌مانده سوکت را استخراج کن
+                QString remainingData;
+                while (socket->bytesAvailable()) {
+                    remainingData += QString::fromUtf8(socket->readAll());
+                }
+
+                this->hide();
+                auto *gameWindow = new GameBoard(nullptr, socket, &username, &playersList, remainingData);
+                gameWindow->show();
+                this->deleteLater();
+                return;
+            }
         }
     }
 }
