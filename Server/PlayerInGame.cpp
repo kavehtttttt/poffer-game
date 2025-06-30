@@ -18,6 +18,14 @@ const Hand* PlayerInGame::getHand() const {
     return &m_hand;
 }
 
+Hand* PlayerInGame::getFinalHand() {
+    return &m_finalHand;
+}
+
+const Hand* PlayerInGame::getFinalHand() const {
+    return &m_finalHand;
+}
+
 chanells* PlayerInGame::getClientChannel() const {
     return m_clientChannel;
 }
@@ -33,22 +41,18 @@ void PlayerInGame::incrementRoundsWon() {
 
 void PlayerInGame::clearHand() {
     m_hand.getCards().clear();
-    qDebug() << "Player" << m_username << "hand cleared.";
+    qDebug() << "Player" << m_username << "current hand cleared.";
+}
+
+void PlayerInGame::clearFinalHand() {
+    m_finalHand.getCards().clear();
+    qDebug() << "Player" << m_username << "final hand cleared.";
 }
 
 void PlayerInGame::receiveCards(const QList<Card>& cards) {
+    m_hand.getCards().clear();
     for (const Card& card : cards) {
         m_hand.addCard(card);
     }
-    qDebug() << "Player" << m_username << "received" << cards.size() << "cards. Hand size:" << m_hand.getCards().size();
-}
-
-void PlayerInGame::emitCardSelected(const Card& card) {
-    emit cardSelected(this, card);
-    qDebug() << "Player" << m_username << "emitted cardSelected signal for:" << card.toString();
-}
-
-void PlayerInGame::emitTurnTimedOut() {
-    emit turnTimedOut(this);
-    qDebug() << "Player" << m_username << "emitted turnTimedOut signal.";
+    qDebug() << "Player" << m_username << "received" << cards.size() << "cards for current hand. Hand size:" << m_hand.getCards().size();
 }

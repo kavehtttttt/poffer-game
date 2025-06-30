@@ -104,6 +104,7 @@ void GameSession::startRound(){
 
     for (PlayerInGame* player : m_players) {
         player->clearHand();
+        player->clearFinalHand();
     }
     m_cardsSelectedInCurrentSequence = 0;
     m_currentSelections.clear();
@@ -273,10 +274,11 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
     }
 
     m_turnTimer.stop();
-    m_currentSelections.append({player, selectedCard});
+    player->getFinalHand()->addCard(selectedCard);
     m_cardsSelectedInCurrentSequence++;
 
     qDebug() << "Player" << player->getUsername() << "selected card:" << selectedCard.toString();
+    qDebug() << "Player" << player->getUsername() << "final hand size:" << player->getFinalHand()->getCards().size();
 
     QJsonObject selectionUpdateMsg;
     selectionUpdateMsg["type"] = "Player_Selection_Update";
@@ -290,53 +292,34 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
         }
     }
 
-    if (m_cardsSelectedInCurrentSequence < 4) {
+    if (m_cardsSelectedInCurrentSequence == m_players.size() * 5) {
+        qDebug() << "All 20 cards selected for current round. Evaluating round.";
+        evaluateRound();
+    } else {
         int currentPlayerIndex = m_players.indexOf(player);
         PlayerInGame* nextPlayerInSequence = m_players[(currentPlayerIndex + 1) % m_players.size()];
 
-        QList<Card> cardsToPass = player->getHand()->getCards();
-        player->clearHand();
-        nextPlayerInSequence->receiveCards(cardsToPass);
+        if (m_cardsSelectedInCurrentSequence % 4 != 0) {
+            QList<Card> cardsToPass = player->getHand()->getCards();
+            player->clearHand();
+            nextPlayerInSequence->receiveCards(cardsToPass);
 
-        qDebug() << "Passing cards from" << player->getUsername() << "to" << nextPlayerInSequence->getUsername();
+            qDebug() << "Passing cards from" << player->getUsername() << "to" << nextPlayerInSequence->getUsername();
+        } else {
+            player->clearHand(); // Clear the last 3 cards for the 4th player in sequence
+            qDebug() << "Discarding remaining cards from" << player->getUsername() << "as sequence ended.";
+
+            int nextSequenceStarterIndex = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
+            PlayerInGame* nextSequenceStarter = m_players[nextSequenceStarterIndex];
+
+            QList<Card> newSevenCards = m_deck.dealCards(7);
+            nextSequenceStarter->receiveCards(newSevenCards);
+
+            qDebug() << "Dealing 7 new cards to" << nextSequenceStarter->getUsername() << " for next sequence.";
+            nextPlayerInSequence = nextSequenceStarter;
+        }
 
         m_currentPlayerTurn = nextPlayerInSequence;
-        QJsonObject turnMsg;
-        turnMsg["type"] = "Your_Turn";
-        turnMsg["message"] = "It's your turn to select a card!";
-        QJsonArray cardsInHandArray;
-        for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
-            cardsInHandArray.append(card.toJson());
-        }
-        turnMsg["cards_in_hand"] = cardsInHandArray;
-        QJsonDocument turnDoc(turnMsg);
-        m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
-        m_turnTimer.start(20 * 1000);
-    }
-    else if (m_cardsSelectedInCurrentSequence % 4 == 0) {
-        if (m_cardsSelectedInCurrentSequence == m_players.size() * 5) {
-            qDebug() << "All 20 cards selected for current round. Evaluating round.";
-            evaluateRound();
-        } else {
-            int startingPlayerIndexForNextSequence = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
-            m_currentPlayerTurn = m_players[startingPlayerIndexForNextSequence];
-
-            QJsonObject turnMsg;
-            turnMsg["type"] = "Your_Turn";
-            turnMsg["message"] = "It's your turn to select a card for the next sequence!";
-            QJsonArray cardsInHandArray;
-            for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
-                cardsInHandArray.append(card.toJson());
-            }
-            turnMsg["cards_in_hand"] = cardsInHandArray;
-            QJsonDocument turnDoc(turnMsg);
-            m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
-            m_turnTimer.start(20 * 1000);
-        }
-    } else {
-        int currentPlayerIndex = m_players.indexOf(player);
-        m_currentPlayerTurn = m_players[(currentPlayerIndex + 1) % m_players.size()];
-
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
         turnMsg["message"] = "It's your turn to select a card!";
@@ -357,11 +340,11 @@ void GameSession::evaluateRound() {
     QMap<PlayerInGame*, PofferRankEvaluator::HandRankResult> playerRanks;
 
     for (PlayerInGame* player : m_players) {
-        if (player->getHand()->getCards().size() != 5) {
-            throw GameException(QString("Player %1 has incorrect hand size for evaluation in round %2. Hand size: %3").arg(player->getUsername()).arg(m_currentRound).arg(player->getHand()->getCards().size()));
+        if (player->getFinalHand()->getCards().size() != 5) {
+            throw GameException(QString("Player %1 has incorrect final hand size for evaluation in round %2. Hand size: %3").arg(player->getUsername()).arg(m_currentRound).arg(player->getFinalHand()->getCards().size()));
         }
-        playerRanks[player] = PofferRankEvaluator::evaluateHand(player->getHand()->getCards());
-        qDebug() << "Player" << player->getUsername() << "hand rank:" << playerRanks[player].description;
+        playerRanks[player] = PofferRankEvaluator::evaluateHand(player->getFinalHand()->getCards());
+        qDebug() << "Player" << player->getUsername() << "final hand rank:" << playerRanks[player].description;
     }
 
     PlayerInGame* roundWinner = nullptr;
@@ -475,7 +458,7 @@ void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResult
             for(int i = 0; i < player->getRoundsWon(); ++i) {
                 entry.roundResults.append(QString("Won Round %1").arg(i+1));
             }
-            if (player->getRoundsWon() == 0 && entry.finalResult != "Loss" && entry.finalResult != "Draw") { // No rounds won in a completed game (and not a loss or draw)
+            if (player->getRoundsWon() == 0 && entry.finalResult != "Loss" && entry.finalResult != "Draw") {
                 entry.roundResults.append("No Rounds Won");
             }
         }
@@ -516,15 +499,8 @@ void GameSession::handlePlayerDisconnected(chanells* channel) {
             }
         }
 
-
         QTimer::singleShot(60 * 1000, this, [this, disconnectedPlayer, channel]() {
-
-            if (!m_playersMap.contains(disconnectedPlayer->getUsername())) {
-                qDebug() << "Player" << disconnectedPlayer->getUsername() << "already removed (reconnected or otherwise).";
-                return;
-            }
-
-            if (disconnectedPlayer->getClientChannel() == channel && channel->getSocket()->state() != QAbstractSocket::ConnectedState) {
+            if (!m_playersMap.contains(disconnectedPlayer->getUsername()) || disconnectedPlayer->getClientChannel()->getSocket()->state() != QAbstractSocket::ConnectedState) {
                 qDebug() << "Player" << disconnectedPlayer->getUsername() << "did not reconnect within 60 seconds. Ending game.";
                 QJsonObject finalDisconnectMsg;
                 finalDisconnectMsg["type"] = "Player_Disconnected_End";
