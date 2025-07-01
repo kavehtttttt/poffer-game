@@ -40,12 +40,12 @@ void Server::incomingConnection(qintptr socketDescriptor)
     connect(channel, &chanells::messageReceived, this, &Server::handleMessage);
     connect(channel, &chanells::disconnected, this, &Server::handleDisconnection);
 
-    channel->start(); // Ensure chanells starts its communication thread/loop
+    channel->start();
 }
 
 void Server::handleMessage(chanells* source, QString msg)
 {
-    // Debug: Print raw message received
+
     qDebug() << "From client:" << source->getUsername() << "->" << msg;
 
     QJsonParseError error;
@@ -62,7 +62,6 @@ void Server::handleMessage(chanells* source, QString msg)
     QString type = obj["type"].toString();
     QJsonObject response;
 
-    // Debug: Print message type
     qDebug() << "Processing message type:" << type;
 
     try {
@@ -89,7 +88,6 @@ void Server::handleMessage(chanells* source, QString msg)
             if(response["status"]=="success"){
                 QString newUsername = obj["new_username"].toString();
                 gameManager->removePlayerFromWaitingRoom(oldUsername);
-                gameManager->addPlayerToWaitingRoom(source, newUsername);
                 source->setUsername(newUsername);
             }
         }
@@ -156,15 +154,59 @@ void Server::handleMessage(chanells* source, QString msg)
                     if (session->getPlayersMap().contains(username)) {
                         session->processClientAction(username, obj);
                         handled = true;
-                        response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "success"}};
                         break;
                     }
                 }
                 if (!handled) {
                     qWarning() << "Received card selection from" << username << "but no active game session found for them.";
                     response = QJsonObject{{"type", "Player_Selected_Card"}, {"status", "error"}, {"message", "No active game session."}};
+                    QJsonDocument docRes(response);
+                    source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
+                }
+                return;
+            }
+        }
+        else if (type == "Swap_Request") {
+            QString requestFromUsername = obj["request_from_username"].toString();
+            QString requestToUsername = obj["request_to_username"].toString();
+            QJsonObject cardToSwapJson = obj["card_to_swap"].toObject();
+
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                if (session->getPlayersMap().contains(requestFromUsername)) {
+                    session->handleSwapRequest(requestFromUsername, requestToUsername, cardToSwapJson);
+                    handled = true;
+                    break;
                 }
             }
+            if (!handled) {
+                qWarning() << "Swap_Request from" << requestFromUsername << "not handled: No active game session found.";
+                QJsonObject errorMsg;
+                errorMsg["type"] = "Swap_Notification";
+                errorMsg["status"] = "error";
+                errorMsg["message"] = "Swap request failed: Not in an active game session.";
+                source->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+            }
+            return;
+        }
+        else if (type == "Swap_Response") {
+            QString responseFromUsername = obj["response_from_username"].toString();
+            QString requestFromUsername = obj["request_from_username"].toString();
+            bool accepted = obj["accepted"].toBool();
+            QJsonObject cardToSwapBackJson = obj["card_to_swap_back"].toObject();
+
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                if (session->getPlayersMap().contains(responseFromUsername)) {
+                    session->handleSwapResponse(responseFromUsername, requestFromUsername, accepted, cardToSwapBackJson);
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled) {
+                qWarning() << "Swap_Response from" << responseFromUsername << "not handled: No active game session found.";
+            }
+            return;
         }
         else {
             response = QJsonObject{
@@ -195,7 +237,7 @@ void Server::handleMessage(chanells* source, QString msg)
         };
     }
 
-    if (!response.isEmpty()) {
+    if (!response.isEmpty() && type != "Player_Selected_Card" && type != "start_game" && type != "Swap_Request" && type != "Swap_Response") {
         QJsonDocument docRes(response);
         qDebug() << "Server sending to client" << source->getUsername() << "data:" << QString::fromUtf8(docRes.toJson(QJsonDocument::Compact));
         source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
@@ -209,6 +251,10 @@ void Server::handleDisconnection()
     {
         qDebug() << "Client" << channel->getUsername() << "disconnected. Removing from list.";
         gameManager->removePlayerFromWaitingRoom(channel->getUsername());
+        for (GameSession* session : gameManager->getActiveGameSessions()) {
+            if (session->getPlayersMap().contains(channel->getUsername())) {
+            }
+        }
         clients.removeOne(channel);
         channel->deleteLater();
     }

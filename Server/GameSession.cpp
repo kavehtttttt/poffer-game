@@ -15,6 +15,7 @@ GameSession::GameSession(const QStringList& playerUsernames, QMap<QString, chane
     m_startingPlayer(nullptr),
     m_currentPlayerTurn(nullptr),
     m_cardsSelectedInCurrentSequence(0),
+    m_currentSequenceNumber(0), // Initialize new member
     m_usersRef(usersRef)
 {
     if (playerUsernames.size() != 4) {
@@ -105,9 +106,11 @@ void GameSession::startRound(){
     for (PlayerInGame* player : m_players) {
         player->clearHand();
         player->clearFinalHand();
+        m_playerSwapsInitiatedThisRound[player->getUsername()] = 0; // Reset swap count for new round
     }
     m_cardsSelectedInCurrentSequence = 0;
     m_currentSelections.clear();
+    m_currentSequenceNumber = 1;
 
     determineStartingPlayer();
     dealInitialCards();
@@ -284,6 +287,7 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
     selectionUpdateMsg["type"] = "Player_Selection_Update";
     selectionUpdateMsg["username"] = player->getUsername();
     selectionUpdateMsg["card_selected"] = selectedCard.toJson();
+    selectionUpdateMsg["sequence_number"] = m_currentSequenceNumber;
     QJsonDocument updateDoc(selectionUpdateMsg);
     QString updateMsg = QString::fromUtf8(updateDoc.toJson(QJsonDocument::Compact));
     for (PlayerInGame* p : m_players) {
@@ -297,28 +301,25 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
         player->clearHand();
         evaluateRound();
     }
-
     else if (m_cardsSelectedInCurrentSequence % 4 == 0) {
-
         player->clearHand();
         qDebug() << "Discarding remaining cards from" << player->getUsername() << "as sequence ended.";
 
+        m_currentSequenceNumber++;
 
         int nextSequenceStarterIndex = (m_players.indexOf(m_startingPlayer) + (m_cardsSelectedInCurrentSequence / 4)) % m_players.size();
         PlayerInGame* nextSequenceStarter = m_players[nextSequenceStarterIndex];
-
 
         QList<Card> newSevenCards = m_deck.dealCards(7);
         nextSequenceStarter->receiveCards(newSevenCards);
 
         qDebug() << "Dealing 7 new cards to" << nextSequenceStarter->getUsername() << " for next sequence.";
 
-
         m_currentPlayerTurn = nextSequenceStarter;
 
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
-        turnMsg["message"] = "It's your turn to select a card for the next sequence!"; // پیام مناسب
+        turnMsg["message"] = "It's your turn to select a card for the next sequence!";
         QJsonArray cardsInHandArray;
         for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
             cardsInHandArray.append(card.toJson());
@@ -328,13 +329,12 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
         m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
         m_turnTimer.start(20 * 1000);
     }
-
     else {
-        QList<Card> cardsToPass = player->getHand()->getCards();
-        player->clearHand();
-
         int currentPlayerIndex = m_players.indexOf(player);
         PlayerInGame* nextPlayerInSequence = m_players[(currentPlayerIndex + 1) % m_players.size()];
+
+        QList<Card> cardsToPass = player->getHand()->getCards();
+        player->clearHand();
         nextPlayerInSequence->receiveCards(cardsToPass);
 
         qDebug() << "Passing cards from" << player->getUsername() << "to" << nextPlayerInSequence->getUsername();
@@ -352,6 +352,185 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
         m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
         m_turnTimer.start(20 * 1000);
     }
+}
+
+void GameSession::handleSwapRequest(const QString& requestFromUsername, const QString& requestToUsername, const QJsonObject& cardToSwapJson) {
+    qDebug() << "Swap Request from" << requestFromUsername << "to" << requestToUsername << "for card" << cardToSwapJson;
+
+    PlayerInGame* requestFromPlayer = m_playersMap.value(requestFromUsername);
+    PlayerInGame* requestToPlayer = m_playersMap.value(requestToUsername);
+
+
+    if (!requestFromPlayer || !requestToPlayer) {
+        qWarning() << "Swap Request: Player not found.";
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Swap_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Swap failed: One or both players not found.";
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+    if (requestFromPlayer != m_currentPlayerTurn) {
+        qWarning() << "Swap Request: Not requestFromPlayer's turn.";
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Swap_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Swap failed: It's not your turn to initiate a swap.";
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    Card cardToSwap(cardToSwapJson["suit"].toInt(), cardToSwapJson["rank"].toInt());
+    if (!requestFromPlayer->getHand()->getCards().contains(cardToSwap)) {
+        qWarning() << "Swap Request: Card not in requestFromPlayer's hand.";
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Swap_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Swap failed: The card you offered is not in your hand.";
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    if (!isSwapAllowed()) {
+        qWarning() << "Swap Request: Swap not allowed in sequence" << m_currentSequenceNumber;
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Swap_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Swap failed: Swapping is not allowed in the last sequence.";
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    if (m_pendingSwapRequests.contains(requestToUsername)) {
+        qWarning() << "Swap Request: There is already a pending swap request for" << requestToUsername;
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Swap_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = QString("%1 already has a pending swap request. Please wait.").arg(requestToUsername);
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    QJsonObject originalRequestData;
+    originalRequestData["request_from_username"] = requestFromUsername;
+    originalRequestData["request_to_username"] = requestToUsername;
+    originalRequestData["card_to_swap"] = cardToSwapJson;
+    m_pendingSwapRequests.insert(requestToUsername, originalRequestData);
+
+    QJsonObject swapOfferMsg;
+    swapOfferMsg["type"] = "Swap_Offer";
+    swapOfferMsg["from_username"] = requestFromUsername;
+    swapOfferMsg["card_offered"] = cardToSwapJson;
+    swapOfferMsg["message"] = QString("Player %1 wants to swap %2 with you. Do you accept?").arg(requestFromUsername).arg(cardToSwap.toString());
+    requestToPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(swapOfferMsg).toJson(QJsonDocument::Compact)));
+
+    qDebug() << "Swap request sent to" << requestToUsername;
+}
+
+
+void GameSession::handleSwapResponse(const QString& responseFromUsername, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson) {
+    qDebug() << "Swap Response from" << responseFromUsername << ": Accepted=" << accepted;
+
+    PlayerInGame* responseFromPlayer = m_playersMap.value(responseFromUsername);
+    PlayerInGame* requestFromPlayer = m_playersMap.value(requestFromUsername);
+
+    if (!responseFromPlayer || !requestFromPlayer) {
+        qWarning() << "Swap Response: One or both players not found.";
+        return;
+    }
+
+    if (!m_pendingSwapRequests.contains(responseFromUsername)) {
+        qWarning() << "Swap Response: No pending swap request for" << responseFromUsername;
+        return;
+    }
+
+    QJsonObject originalRequestData = m_pendingSwapRequests.take(responseFromUsername);
+    Card originalCardToSwap(originalRequestData["card_to_swap"].toObject()["suit"].toInt(), originalRequestData["card_to_swap"].toObject()["rank"].toInt());
+
+    if (accepted) {
+        Card cardToSwapBack(cardToSwapBackJson["suit"].toInt(), cardToSwapBackJson["rank"].toInt());
+        if (!responseFromPlayer->getHand()->getCards().contains(cardToSwapBack)) {
+            qWarning() << "Swap Response: Card to swap back not in responseFromPlayer's hand.";
+            QJsonObject errorMsg;
+            errorMsg["type"] = "Swap_Notification";
+            errorMsg["status"] = "error";
+            errorMsg["message"] = "Swap failed: The card you offered for swap is not in your hand.";
+            responseFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+            return;
+        }
+
+        executeSwap(requestFromPlayer, originalCardToSwap, responseFromPlayer, cardToSwapBack);
+        m_playerSwapsInitiatedThisRound[requestFromUsername]++;
+
+        QJsonObject successMsg;
+        successMsg["type"] = "Swap_Notification";
+        successMsg["status"] = "success";
+        successMsg["message"] = QString("%1 and %2 successfully swapped cards!").arg(requestFromUsername).arg(responseFromUsername);
+        successMsg["player1_username"] = requestFromUsername;
+        successMsg["player1_card_sent"] = originalCardToSwap.toJson();
+        successMsg["player2_username"] = responseFromUsername;
+        successMsg["player2_card_sent"] = cardToSwapBack.toJson();
+        QString msg = QString::fromUtf8(QJsonDocument(successMsg).toJson(QJsonDocument::Compact));
+
+        for (PlayerInGame* p : m_players) {
+            if (p->getClientChannel()) {
+                p->getClientChannel()->sendMessage(msg);
+            }
+        }
+        qDebug() << "Swap executed successfully.";
+        QJsonObject turnMsg;
+        turnMsg["type"] = "Your_Turn";
+        turnMsg["message"] = "It's your turn to select a card!";
+        QJsonArray cardsInHandArray;
+        for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
+            cardsInHandArray.append(card.toJson());
+        }
+        turnMsg["cards_in_hand"] = cardsInHandArray;
+        QJsonDocument turnDoc(turnMsg);
+        m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
+        m_turnTimer.start(20 * 1000);
+
+    } else {
+        QJsonObject rejectMsg;
+        rejectMsg["type"] = "Swap_Notification";
+        rejectMsg["status"] = "rejected";
+        rejectMsg["message"] = QString("Swap request rejected by %1.").arg(responseFromUsername);
+        rejectMsg["request_from_username"] = requestFromUsername;
+        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(rejectMsg).toJson(QJsonDocument::Compact)));
+        qDebug() << "Swap request rejected by" << responseFromUsername;
+        QJsonObject turnMsg;
+        turnMsg["type"] = "Your_Turn";
+        turnMsg["message"] = "It's your turn to select a card!";
+        QJsonArray cardsInHandArray;
+        for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
+            cardsInHandArray.append(card.toJson());
+        }
+        turnMsg["cards_in_hand"] = cardsInHandArray;
+        QJsonDocument turnDoc(turnMsg);
+        m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
+        m_turnTimer.start(20 * 1000);
+    }
+}
+
+
+void GameSession::executeSwap(PlayerInGame* player1, const Card& card1, PlayerInGame* player2, const Card& card2) {
+    if (!player1->getHand()->removeCard(card1)) {
+        qWarning() << "Error: Could not remove card1 from player1's hand during swap.";
+        return;
+    }
+    if (!player2->getHand()->removeCard(card2)) {
+        qWarning() << "Error: Could not remove card2 from player2's hand during swap.";
+        player1->getHand()->addCard(card1);
+        return;
+    }
+
+    player1->getHand()->addCard(card2);
+    player2->getHand()->addCard(card1);
+    qDebug() << player1->getUsername() << "swapped" << card1.toString() << "for" << card2.toString() << "with" << player2->getUsername();
+}
+
+bool GameSession::isSwapAllowed() const {
+    return m_currentSequenceNumber < 5;
 }
 
 
