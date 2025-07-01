@@ -106,15 +106,13 @@ void GameSession::startRound(){
     for (PlayerInGame* player : m_players) {
         player->clearHand();
         player->clearFinalHand();
-        m_playerSwapsInitiatedThisRound[player->getUsername()] = 0; // Reset swap count for new round
+        m_playerSwapsInitiatedThisRound[player->getUsername()] = 0;
     }
     m_cardsSelectedInCurrentSequence = 0;
     m_currentSelections.clear();
     m_currentSequenceNumber = 1;
 
     determineStartingPlayer();
-    dealInitialCards();
-
     QJsonObject roundStartMsg;
     roundStartMsg["type"] = "Round_Start";
     roundStartMsg["round_number"] = m_currentRound;
@@ -127,20 +125,9 @@ void GameSession::startRound(){
             player->getClientChannel()->sendMessage(msg);
         }
     }
+    QTimer::singleShot(10 * 1000, this, &GameSession::dealInitialCards);
 
-    m_currentPlayerTurn = m_startingPlayer;
-    QJsonObject turnMsg;
-    turnMsg["type"] = "Your_Turn";
-    turnMsg["message"] = "It's your turn to select a card!";
-    QJsonArray cardsInHandArray;
-    for (const Card& card : m_currentPlayerTurn->getHand()->getCards()) {
-        cardsInHandArray.append(card.toJson());
-    }
-    turnMsg["cards_in_hand"] = cardsInHandArray;
 
-    QJsonDocument turnDoc(turnMsg);
-    m_currentPlayerTurn->getClientChannel()->sendMessage(QString::fromUtf8(turnDoc.toJson(QJsonDocument::Compact)));
-    m_turnTimer.start(20 * 1000);
 }
 
 void GameSession::determineStartingPlayer() {
@@ -360,7 +347,6 @@ void GameSession::handleSwapRequest(const QString& requestFromUsername, const QS
     PlayerInGame* requestFromPlayer = m_playersMap.value(requestFromUsername);
     PlayerInGame* requestToPlayer = m_playersMap.value(requestToUsername);
 
-
     if (!requestFromPlayer || !requestToPlayer) {
         qWarning() << "Swap Request: Player not found.";
         QJsonObject errorMsg;
@@ -427,7 +413,6 @@ void GameSession::handleSwapRequest(const QString& requestFromUsername, const QS
     qDebug() << "Swap request sent to" << requestToUsername;
 }
 
-
 void GameSession::handleSwapResponse(const QString& responseFromUsername, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson) {
     qDebug() << "Swap Response from" << responseFromUsername << ": Accepted=" << accepted;
 
@@ -478,6 +463,7 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
             }
         }
         qDebug() << "Swap executed successfully.";
+
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
         turnMsg["message"] = "It's your turn to select a card!";
@@ -498,6 +484,7 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
         rejectMsg["request_from_username"] = requestFromUsername;
         requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(rejectMsg).toJson(QJsonDocument::Compact)));
         qDebug() << "Swap request rejected by" << responseFromUsername;
+
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
         turnMsg["message"] = "It's your turn to select a card!";
@@ -511,7 +498,6 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
         m_turnTimer.start(20 * 1000);
     }
 }
-
 
 void GameSession::executeSwap(PlayerInGame* player1, const Card& card1, PlayerInGame* player2, const Card& card2) {
     if (!player1->getHand()->removeCard(card1)) {
@@ -530,7 +516,7 @@ void GameSession::executeSwap(PlayerInGame* player1, const Card& card1, PlayerIn
 }
 
 bool GameSession::isSwapAllowed() const {
-    return m_currentSequenceNumber < 5;
+    return m_currentSequenceNumber < 5; // Swap is not allowed in the 5th (last) sequence.
 }
 
 
@@ -568,8 +554,30 @@ void GameSession::evaluateRound() {
         qDebug() << "Round" << m_currentRound << "winner:" << roundWinner->getUsername();
 
         QMap<QString, QString> roundResults;
+        QJsonArray roundResultsArray;
         for (PlayerInGame* player : m_players) {
-            roundResults[player->getUsername()] = (player == roundWinner) ? "Win" : "Loss";
+            QString result = (player == roundWinner) ? "Win" : "Loss";
+            roundResults[player->getUsername()] = result;
+
+            QJsonObject playerResult;
+            playerResult["username"] = player->getUsername();
+            playerResult["result"] = result;
+            playerResult["hand_rank"] = playerRanks[player].description;
+            roundResultsArray.append(playerResult);
+        }
+
+        // NEW: Send Round_End message to all clients
+        QJsonObject roundEndMsg;
+        roundEndMsg["type"] = "Round_End";
+        roundEndMsg["round_number"] = m_currentRound;
+        roundEndMsg["winner_username"] = roundWinner->getUsername();
+        roundEndMsg["results"] = roundResultsArray;
+        QJsonDocument roundEndDoc(roundEndMsg);
+        QString roundEndJson = QString::fromUtf8(roundEndDoc.toJson(QJsonDocument::Compact));
+        for (PlayerInGame* player : m_players) {
+            if (player->getClientChannel()) {
+                player->getClientChannel()->sendMessage(roundEndJson);
+            }
         }
 
         emit roundEnded(m_currentRound, roundWinner->getUsername(), roundResults);
@@ -609,15 +617,44 @@ void GameSession::endGame(PlayerInGame* winner, bool earlyExit) {
     m_turnTimer.stop();
 
     QString winnerUsername = "No Winner";
+    QString gameEndMessageText;
     if (winner) {
         winnerUsername = winner->getUsername();
+        gameEndMessageText = QString("The game has ended! %1 is the final winner!").arg(winnerUsername);
         qDebug() << "Game Winner:" << winnerUsername;
     } else if (earlyExit) {
+        gameEndMessageText = "The game ended early due to disconnection or an error.";
         qDebug() << "Game ended early due to exit/disconnection/error.";
+    } else {
+        gameEndMessageText = "The game has ended. No clear winner (draw or special scenario).";
     }
 
     QMap<QString, QString> finalRoundResults;
     saveGameHistory(finalRoundResults, winner, earlyExit);
+
+
+    QJsonObject gameEndMsg;
+    gameEndMsg["type"] = "Game_End";
+    gameEndMsg["winner_username"] = winnerUsername;
+    gameEndMsg["message"] = gameEndMessageText;
+    gameEndMsg["early_exit"] = earlyExit;
+
+    QJsonArray finalScores;
+    for(PlayerInGame* player : m_players) {
+        QJsonObject playerObj;
+        playerObj["username"] = player->getUsername();
+        playerObj["rounds_won"] = player->getRoundsWon();
+        finalScores.append(playerObj);
+    }
+    gameEndMsg["final_scores"] = finalScores;
+
+    QJsonDocument gameEndDoc(gameEndMsg);
+    QString gameEndJson = QString::fromUtf8(gameEndDoc.toJson(QJsonDocument::Compact));
+    for (PlayerInGame* player : m_players) {
+        if (player->getClientChannel()) {
+            player->getClientChannel()->sendMessage(gameEndJson);
+        }
+    }
 
     emit gameEnded(winnerUsername);
 
@@ -693,13 +730,13 @@ void GameSession::handlePlayerDisconnected(chanells* channel) {
         QJsonDocument doc(disconnectMsg);
         QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
         for (PlayerInGame* player : m_players) {
-            if (player->getClientChannel() && player != disconnectedPlayer) {
+            if (player->getClientChannel()) {
                 player->getClientChannel()->sendMessage(msg);
             }
         }
 
         QTimer::singleShot(60 * 1000, this, [this, disconnectedPlayer, channel]() {
-            if (!m_playersMap.contains(disconnectedPlayer->getUsername()) || disconnectedPlayer->getClientChannel()->getSocket()->state() != QAbstractSocket::ConnectedState) {
+            if (!m_playersMap.contains(disconnectedPlayer->getUsername()) || (disconnectedPlayer->getClientChannel() == channel && channel->getSocket()->state() != QAbstractSocket::ConnectedState)) {
                 qDebug() << "Player" << disconnectedPlayer->getUsername() << "did not reconnect within 60 seconds. Ending game.";
                 QJsonObject finalDisconnectMsg;
                 finalDisconnectMsg["type"] = "Player_Disconnected_End";
