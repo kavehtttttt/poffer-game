@@ -89,7 +89,6 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
     formLayout->addSpacing(5);
     formLayout->addWidget(submitButton);
 
-    // 🔵 وضعیت اتصال
     connectionStatusLabel = new QLabel(this);
     connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
     connectionStatusLabel->setAlignment(Qt::AlignCenter);
@@ -106,7 +105,6 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: gray;");
     }
 
-    // 🔧 رفع مشکل: قطع اتصال‌های قبلی و اتصال مجدد
     disconnect(socket, nullptr, this, nullptr);
     connect(socket, &QTcpSocket::connected, this, [=]() {
         connectionStatusLabel->setText("Connected to server");
@@ -149,7 +147,6 @@ signup::signup(QWidget *parent, QTcpSocket *socket)
 
 void signup::goBackToMainMenu()
 {
-    // قطع اتصال قبل از رفتن به صفحه‌ی اصلی
     disconnect(socket, &QTcpSocket::readyRead, this, &signup::handleServerResponse);
 
     this->hide();
@@ -187,7 +184,6 @@ void signup::handleSignUp()
         if (!errorMessage.isEmpty())
             throw ValidationException(errorMessage.trimmed());
 
-        // ساخت JSON و ارسال
         QJsonObject userJson;
         userJson["type"] = "signup";
         userJson["first_name"] = name;

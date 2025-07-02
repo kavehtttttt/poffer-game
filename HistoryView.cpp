@@ -9,13 +9,14 @@
 #include <QHBoxLayout>
 #include <QFrame>
 
-HistoryView::HistoryView(QWidget *parent, QTcpSocket *socket, const QString &username)
-    : QWidget(parent), socket(socket), username(username)
+HistoryView::HistoryView(QWidget *parent, QTcpSocket *socket, const QString &username, const QJsonObject &gameHistory)
+    : QWidget(parent), socket(socket), username(username), gameHistory(gameHistory)
 {
     setFixedSize(800, 600);
     setWindowTitle("Game History - " + username);
 
     setupUI();
+
     sendHistoryRequest();
 
     if (socket && socket->state() == QAbstractSocket::ConnectedState) {
@@ -42,7 +43,6 @@ void HistoryView::setupUI()
     layout->setContentsMargins(30, 30, 30, 30);
     layout->setSpacing(10);
 
-    // عنوان داخل کادر کرمی
     QFrame *titleFrame = new QFrame(this);
     titleFrame->setStyleSheet("background-color: #e8d4b0; border-radius: 10px;");
     titleFrame->setFixedHeight(80);
@@ -56,7 +56,6 @@ void HistoryView::setupUI()
 
     layout->addWidget(titleFrame);
 
-    // کادر کرمی اطراف لیست تاریخچه
     QFrame *listFrame = new QFrame(this);
     listFrame->setStyleSheet("background-color: #fceacb; border: 2px solid #a67c52; border-radius: 10px;");
     QVBoxLayout *listLayout = new QVBoxLayout(listFrame);
@@ -71,9 +70,8 @@ void HistoryView::setupUI()
         );
 
     listLayout->addWidget(historyListWidget);
-    layout->addWidget(listFrame, 1); // به عنوان بالا چسبیده
+    layout->addWidget(listFrame, 1);
 
-    // دکمه بازگشت پایین
     backButton = new QPushButton("Back", this);
     backButton->setFixedSize(100, 36);
     backButton->setFont(QFont("Georgia", 12, QFont::Bold));
@@ -88,7 +86,6 @@ void HistoryView::setupUI()
     bottomLayout->addStretch();
     layout->addLayout(bottomLayout);
 
-    // وضعیت اتصال در پایین‌ترین قسمت
     connectionStatusLabel = new QLabel(this);
     connectionStatusLabel->setAlignment(Qt::AlignCenter);
     connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
@@ -108,40 +105,29 @@ void HistoryView::sendHistoryRequest()
 
 void HistoryView::onDataReceived()
 {
-    QByteArray data = socket->readAll();
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    static QByteArray buffer;
+    QByteArray newData = socket->readAll();
+    buffer += newData;
 
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        QMessageBox::warning(this, "Error", "Invalid data received from server.");
-        return;
-    }
+    qDebug() << "Raw data received:" << newData;
 
-    QJsonObject obj = doc.object();
-    QString type = obj["type"].toString();
-    if (type != "Get_History") return;
+    while (true) {
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(buffer, &parseError);
 
-    QString status = obj["status"].toString();
-    if (status != "success") {
-        QMessageBox::warning(this, "Error", obj["message"].toString());
-        return;
-    }
+        if (parseError.error == QJsonParseError::NoError) {
+            QJsonObject obj = doc.object();
+            buffer.remove(0, doc.toJson(QJsonDocument::Compact).size());
 
-    historyListWidget->clear();
-    QJsonArray historyArray = obj["history"].toArray();
-
-    for (const QJsonValue &val : historyArray) {
-        QJsonObject entry = val.toObject();
-        QString date = entry["date"].toString();
-        QString result = entry["result"].toString();
-        int score = entry["score"].toInt();
-
-        QString line = QString("🕓 %1 | %2 | 🎯 Score: %3")
-                           .arg(date)
-                           .arg(result)
-                           .arg(score);
-
-        historyListWidget->addItem(line);
+        } else if (parseError.error == QJsonParseError::UnterminatedObject) {
+            break;
+        } else {
+            QMessageBox::warning(this, "Invalid JSON",
+                                 "Raw Data Received:\n" + QString::fromUtf8(buffer) +
+                                     "\nError: " + parseError.errorString());
+            buffer.clear();
+            break;
+        }
     }
 }
 
@@ -151,4 +137,42 @@ void HistoryView::goBack()
     UserPanel *panel = new UserPanel(nullptr, socket, username);
     panel->show();
     this->deleteLater();
+}
+
+void HistoryView::displayHistory()
+{
+    if (gameHistory.isEmpty()) {
+        QMessageBox::warning(this, "No History", "No game history data available.");
+        return;
+    }
+
+    QJsonArray historyArray = gameHistory["history"].toArray();
+    QString allHistoryDetails;
+
+    for (const QJsonValue &val : historyArray) {
+        QJsonObject entry = val.toObject();
+
+        QString dateOfPlay = entry["date_of_play"].toString();
+        QString finalResult = entry["final_result"].toString();
+        QString opponents = entry["opponent_username"].toString();
+        QJsonArray roundResults = entry["round_results"].toArray();
+
+        QString roundDetails;
+        for (const QJsonValue &round : roundResults) {
+            roundDetails += round.toString() + ", ";
+        }
+        if (!roundDetails.isEmpty()) {
+            roundDetails.chop(2);
+        }
+
+        QString historyItem = QString("Date: %1\nResult: %2\nOpponents: %3\nRounds: %4\n\n")
+                                  .arg(dateOfPlay)
+                                  .arg(finalResult)
+                                  .arg(opponents)
+                                  .arg(roundDetails);
+
+        allHistoryDetails += historyItem;
+    }
+
+    QMessageBox::information(this, "Game History", allHistoryDetails);
 }

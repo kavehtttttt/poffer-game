@@ -88,7 +88,6 @@ ResetPassword::ResetPassword(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: gray;");
     }
 
-    // اتصالات وضعیت اتصال
     connect(socket, &QTcpSocket::connected, this, [=]() {
         connectionStatusLabel->setText("Connected to server");
         connectionStatusLabel->setStyleSheet("color: green; font-weight: bold;");
@@ -104,7 +103,6 @@ ResetPassword::ResetPassword(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
     });
 
-    // قطع اتصال قبلی و اتصال مجدد برای جلوگیری از دریافت چندباره
     disconnect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
     connect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
 
@@ -181,13 +179,12 @@ void ResetPassword::handleServerResponse()
 
 void ResetPassword::goBackToLogin()
 {
-    // قطع اتصال برای جلوگیری از دوبار دریافت
     disconnect(socket, &QTcpSocket::readyRead, this, &ResetPassword::handleServerResponse);
 
     this->hide();
     Login *loginPage = new Login(nullptr, socket);
     loginPage->show();
-    this->deleteLater(); // پاک‌سازی امن
+    this->deleteLater();
 }
 
 ResetPassword::~ResetPassword() {}

@@ -1,13 +1,24 @@
 #include "CardWidget.h"
+#include <QMouseEvent>
 
 CardWidget::CardWidget(const QString &text, QWidget *parent)
-    : QWidget(parent), state(Normal)
+    : QWidget(parent), state(Hidden)
 {
     setFixedSize(60, 90);
+
     label = new QLabel(text, this);
     originalText = text;
     label->setAlignment(Qt::AlignCenter);
     label->setFixedSize(60, 90);
+
+    imageLabel = new QLabel(this);
+    imageLabel->setAlignment(Qt::AlignCenter);
+    imageLabel->setFixedSize(60, 90);
+    imageLabel->setStyleSheet("background-color: transparent;");
+    imageLabel->hide();
+
+    imageLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+
     updateStyle();
 }
 
@@ -32,36 +43,46 @@ void CardWidget::updateStyle()
 {
     switch (state) {
     case Normal:
-        label->setText(originalText);
-        label->show();
+        imageLabel->show();
+        label->hide();
         setStyleSheet("background-color: transparent;");
-        label->setStyleSheet(R"(
-            background-color: white;
-            border: 2px solid black;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 14px;
-            color: #333;
-        )");
         break;
     case Red:
-        label->setText(originalText);
-        label->show();
-        setStyleSheet("background-color: transparent;");
-        label->setStyleSheet(R"(
-            background-color: red;
-            border: 2px solid darkred;
+        imageLabel->show();
+        label->hide();
+        setStyleSheet(R"(
+            background-color: transparent;
+            border: 2px solid red;
             border-radius: 12px;
-            font-weight: bold;
-            font-size: 14px;
-            color: white;
         )");
         break;
     case Hidden:
+        imageLabel->hide();
         label->hide();
         setStyleSheet("background-color: transparent;");
         break;
     }
 }
 
+void CardWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (state == Normal && event->button() == Qt::LeftButton) {
+        emit cardClicked(originalText);
+    }
+
+    QWidget::mousePressEvent(event);
+}
+
+
+void CardWidget::setCardImage(const QString& imagePath)
+{
+    QPixmap pixmap(imagePath);
+    if (!pixmap.isNull()) {
+        imageLabel->setPixmap(pixmap.scaled(60, 90, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        imageLabel->show();
+        label->hide();
+    } else {
+        qWarning() << "Failed to load image:" << imagePath;
+    }
+}
 

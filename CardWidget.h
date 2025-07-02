@@ -4,21 +4,30 @@
 #include <QWidget>
 #include <QLabel>
 
-class CardWidget : public QWidget
-{
+class CardWidget : public QWidget {
     Q_OBJECT
+
 public:
-    explicit CardWidget(const QString &text, QWidget *parent = nullptr);
+    enum CardState { Hidden, Normal, Red };
+
+    explicit CardWidget(const QString &text = "", QWidget *parent = nullptr);
+
     void setCardState(int newState);
     void setCardText(const QString& newText);
+    void setCardImage(const QString& imagePath);
+
+signals:
+    void cardClicked(const QString& cardText);
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
-    enum CardState { Normal, Red, Hidden };
-    CardState state;
-    QLabel *label;
-    QString originalText;
-
     void updateStyle();
+    QLabel *label;
+    QLabel *imageLabel;
+    QString originalText;
+    CardState state;
 };
 
 #endif // CARDWIDGET_H

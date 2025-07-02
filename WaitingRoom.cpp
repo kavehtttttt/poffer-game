@@ -29,10 +29,8 @@ WaitingRoom::WaitingRoom(QWidget *parent, QTcpSocket *socket, const QString &use
         connectionStatusLabel->setStyleSheet("color: red;");
     }
 
-    // اتصال برای دریافت پیام از سرور
     connect(socket, &QTcpSocket::readyRead, this, &WaitingRoom::onWaitingMessage);
 
-    // ارسال پیام nowadd به سرور
     QJsonObject req;
     req["type"] = "nowadd";
     req["username"] = username;
@@ -146,7 +144,6 @@ void WaitingRoom::onWaitingMessage()
                 pls << v.toString();
 
             QMessageBox::information(this, "Game Starting", msg + "\n\nPlayers:\n" + pls.join("\n"));
-            // TODO: move to game page
         }
     }
 }

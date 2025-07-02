@@ -39,6 +39,7 @@ HEADERS += \
 FORMS += \
     UserPanel.ui \
     basewindow.ui \
+    cardrevealmanager.ui \
     cardwidget.ui \
     editinfo.ui \
     gameboard.ui \

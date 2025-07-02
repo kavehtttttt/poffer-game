@@ -98,7 +98,6 @@ Login::Login(QWidget *parent, QTcpSocket *socket)
         connectionStatusLabel->setStyleSheet("color: gray;");
     }
 
-    // 🔧 رفع مشکل: قطع اتصال‌های قبلی به readyRead
     disconnect(socket, nullptr, this, nullptr);
 
     connect(socket, &QTcpSocket::connected, this, [this]() {

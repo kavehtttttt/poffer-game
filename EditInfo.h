@@ -21,7 +21,6 @@ private slots:
     void handleEditRequest();
     void goBack();
 
-    // اضافه شده برای دریافت پاسخ سرور
     void handleServerResponse();
 
 private:

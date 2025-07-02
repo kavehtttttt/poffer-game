@@ -88,7 +88,6 @@ EditInfo::EditInfo(QWidget *parent, QTcpSocket *socket, const QString &username)
     connect(submitButton, &QPushButton::clicked, this, &EditInfo::handleEditRequest);
     connectAllCheckboxes();
 
-    // اینجا کانکت برای دریافت پاسخ از سرور
     connect(socket, &QTcpSocket::readyRead, this, &EditInfo::handleServerResponse);
 }
 
@@ -184,7 +183,6 @@ void EditInfo::handleEditRequest()
         socket->write(doc.toJson(QJsonDocument::Compact));
         socket->flush();
 
-        // پیام اینجا حذف شده — حالا پیام بعد از پاسخ سرور نمایش داده می‌شود.
 
     } catch (const std::exception &ex) {
         QMessageBox::warning(this, "Validation Error", ex.what());

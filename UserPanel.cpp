@@ -40,7 +40,6 @@ UserPanel::UserPanel(QWidget *parent, QTcpSocket *socket, const QString &usernam
             connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
         });
 
-        // اتصال عمومی برای دریافت همه پیام‌ها از جمله Game_Start
         connect(socket, &QTcpSocket::readyRead, this, &UserPanel::handleServerMessage);
     }
 }
@@ -150,57 +149,121 @@ void UserPanel::onPlayGameClicked()
 void UserPanel::handleServerMessage()
 {
     while (socket->bytesAvailable()) {
-        QByteArray data = socket->readLine().trimmed(); // فرض بر اینه که سرور با \n جدا می‌کنه
-        if (data.isEmpty()) continue;
+        QByteArray data = socket->readAll().trimmed();
+        int startIndex = 0;
 
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError || !doc.isObject())
-            continue;
+        while (startIndex < data.size()) {
+            int openBraces = 0;
+            int endIndex = -1;
 
-        QJsonObject obj = doc.object();
-        QString type = obj["type"].toString();
-        QString status = obj["status"].toString();
-        QString message = obj["message"].toString();
+            for (int i = startIndex; i < data.size(); ++i) {
+                if (data[i] == '{') openBraces++;
+                else if (data[i] == '}') openBraces--;
 
-        if (type == "start_game") {
-            // فقط نمایش پیام بدون رفتن به صفحه‌ی جدید
-            QMessageBox::information(this, "Start Game", message);
-        }
-        else if (type == "Game_Start") {
-            QMessageBox::information(this, "Game Starting", message);
-
-            // دریافت آرایه بازیکنان
-            QStringList playersList;
-            if (obj.contains("players") && obj["players"].isArray()) {
-                QJsonArray arr = obj["players"].toArray();
-                for (const QJsonValue &val : arr) {
-                    playersList.append(val.toString());
+                if (openBraces == 0 && data[startIndex] == '{') {
+                    endIndex = i;
+                    break;
                 }
             }
 
-            this->hide();
+            if (endIndex == -1) break;
 
-            // باز کردن صفحه GameBoardWindow و پاس دادن socket, username و لیست بازیکنان
-            auto *gameWindow = new GameBoard(nullptr, socket, &playersList);
-            gameWindow->show();
+            QByteArray jsonData = data.mid(startIndex, endIndex - startIndex + 1);
+            startIndex = endIndex + 1;
 
-            this->deleteLater();
-            return;
-        }
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(jsonData, &err);
+            if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+                qDebug() << "Invalid JSON received:" << jsonData;
+                continue;
+            }
 
-        else if (type == "error") {
-            QMessageBox::warning(this, "Error", message);
+            QJsonObject obj = doc.object();
+            QString type = obj["type"].toString();
+
+            if (type == "Get_History") {
+                QString status = obj["status"].toString();
+                if (status != "success") {
+                    QMessageBox::warning(this, "Error", obj["message"].toString());
+                    return;
+                }
+
+                QJsonArray historyArray = obj["history"].toArray();
+                QString allHistoryDetails;
+
+                for (const QJsonValue &val : historyArray) {
+                    QJsonObject entry = val.toObject();
+
+                    QString dateOfPlay = entry["date_of_play"].toString();
+                    QString finalResult = entry["final_result"].toString();
+                    QString opponents = entry["opponent_username"].toString();
+                    QJsonArray roundResults = entry["round_results"].toArray();
+
+                    QString roundDetails;
+                    for (const QJsonValue &round : roundResults) {
+                        roundDetails += round.toString() + ", ";
+                    }
+                    if (!roundDetails.isEmpty()) {
+                        roundDetails.chop(2);
+                    }
+
+                    QString historyItem = QString("Date: %1\nResult: %2\nOpponents: %3\nRounds: %4\n\n")
+                                              .arg(dateOfPlay)
+                                              .arg(finalResult)
+                                              .arg(opponents)
+                                              .arg(roundDetails);
+
+                    allHistoryDetails += historyItem;
+                }
+
+                QMessageBox::information(this, "Game History", allHistoryDetails);
+
+            } else if (type == "Game_Start") {
+                qDebug() << "Processing Game_Start message";
+
+                QStringList playersList;
+                if (obj.contains("players_in_game") && obj["players_in_game"].isArray()) {
+                    QJsonArray arr = obj["players_in_game"].toArray();
+                    for (const QJsonValue &val : arr)
+                        playersList.append(val.toString());
+                }
+
+                QString infoText = "✅ بازی شروع شد!\n\n👥 بازیکنان:\n";
+                for (const QString &player : playersList)
+                    infoText += "• " + player + "\n";
+
+                QMessageBox::information(this, "Game Starting", infoText);
+
+                this->hide();
+                auto *gameWindow = new GameBoard(nullptr, socket, username, &playersList, "");
+                gameWindow->show();
+                this->deleteLater();
+                return;
+
+            } else {
+                qDebug() << "Unhandled message type:" << type;
+            }
         }
     }
 }
 
 void UserPanel::onHistoryClicked()
 {
-    this->hide();
-    auto *history = new HistoryView(nullptr, socket, username);
-    history->show();
-    this->deleteLater();
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        QMessageBox::warning(this, "Error", "Not connected to server.");
+        return;
+    }
+
+    QJsonObject req;
+    req["type"] = "Get_History";
+    req["username"] = username;
+
+    QByteArray reqData = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+
+    socket->write(reqData);
+    socket->flush();
+
+    qDebug() << "Sent Get_History request:" << QString::fromUtf8(reqData);
 }
 
 void UserPanel::onEditInfoClicked()
