@@ -1,6 +1,7 @@
 #ifndef GAMEBOARD_H
 #define GAMEBOARD_H
 
+#include "qcombobox.h"
 #include "qjsonarray.h"
 #include "qpushbutton.h"
 #include <QWidget>
@@ -57,6 +58,9 @@ private:
     bool isPaused;
     QMap<QString, QString> playerToSide;
     QMap<QString, QString> sideToPlayer;
+    QComboBox* playerComboBox;
+    QComboBox* numberComboBox;
+    QPushButton* confirmButton;
 
     QLabel *connectionStatusLabel;
     QLabel *gameMessageLabel;

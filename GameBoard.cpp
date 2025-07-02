@@ -11,7 +11,6 @@
 #include <QGraphicsView>
 #include <QTimer>
 #include <QMessageBox>
-
 GameBoard::GameBoard(QWidget *parent, QTcpSocket* socket, QString& username, QStringList* otherPlayers, const QString& initialBuffer)
     : QWidget(parent), socket(socket), otherPlayers(otherPlayers), username(username), buffer("")
 {
@@ -53,7 +52,62 @@ GameBoard::GameBoard(QWidget *parent, QTcpSocket* socket, QString& username, QSt
     setupRightCards();
     setupCenterCards();
 
-    QHBoxLayout *bottomButtonLayout = new QHBoxLayout();
+    playerComboBox = new QComboBox(this);
+    numberComboBox = new QComboBox(this);
+    confirmButton = new QPushButton("Confirm", this);
+
+    for (const QString& player : *otherPlayers) {
+        if (player != username) {
+            playerComboBox->addItem(player);
+        }
+    }
+
+    for (int i = 1; i <= 5; ++i) {
+        numberComboBox->addItem(QString::number(i));
+    }
+
+    QVBoxLayout* comboBoxLayout = new QVBoxLayout();
+    comboBoxLayout->addWidget(playerComboBox);
+    comboBoxLayout->addWidget(numberComboBox);
+    comboBoxLayout->addWidget(confirmButton);
+    layout->addLayout(comboBoxLayout);
+
+    connect(confirmButton, &QPushButton::clicked, this, [=]() {
+        QString selectedPlayer = playerComboBox->currentText();
+        QString selectedCard = numberComboBox->currentText();
+
+        if (selectedPlayer.isEmpty() || selectedCard.isEmpty()) {
+            QMessageBox::warning(this, "Error", "Player or card is not selected!");
+            return;
+        }
+
+        QStringList cardParts = selectedCard.split("-");
+        if (cardParts.size() != 2) {
+            QMessageBox::warning(this, "Error", "Invalid card format!");
+            return;
+        }
+
+        int suit = cardParts[0].toInt();
+        int rank = cardParts[1].toInt();
+
+        QJsonObject swapRequest;
+        swapRequest["type"] = "Swap_Request";
+        swapRequest["request_from_username"] = username;
+        swapRequest["request_to_username"] = selectedPlayer;
+        QJsonObject cardToSwap;
+        cardToSwap["suit"] = suit;
+        cardToSwap["rank"] = rank;
+        swapRequest["card_to_swap"] = cardToSwap;
+
+        QJsonDocument doc(swapRequest);
+        QString jsonString = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+        socket->write(jsonString.toUtf8());
+        socket->flush();
+
+        QMessageBox::information(this, "JSON Sent", "Message Sent:\n" + jsonString);
+
+        qDebug() << "Swap_Request sent:" << jsonString;
+    });    QHBoxLayout *bottomButtonLayout = new QHBoxLayout();
     bottomButtonLayout->setContentsMargins(10, 10, 10, 10);
     bottomButtonLayout->setSpacing(10);
 
@@ -113,6 +167,7 @@ GameBoard::GameBoard(QWidget *parent, QTcpSocket* socket, QString& username, QSt
         }
     });
 }
+
 
 void GameBoard::processInitialData(const QString& data)
 {
@@ -337,6 +392,49 @@ void GameBoard::handleServerMessage(const QString& message) {
         return;
     }
 
+    // if (type == "Swap_Response") {
+    //     QString requestFrom = obj["request_from_username"].toString();
+    //     QString cardSuit = QString::number(obj["card_to_swap"].toObject()["suit"].toInt());
+    //     QString cardRank = QString::number(obj["card_to_swap"].toObject()["rank"].toInt());
+
+    //     // ساخت پیام برای نمایش به کاربر
+    //     QString messageText = QString("Player %1 wants to swap a card:\nSuit: %2\nRank: %3\nDo you accept?")
+    //                               .arg(requestFrom)
+    //                               .arg(cardSuit)
+    //                               .arg(cardRank);
+
+    //     // نمایش پیام با دو دکمه "بله" و "خیر"
+    //     QMessageBox msgBox;
+    //     msgBox.setWindowTitle("Swap Request");
+    //     msgBox.setText(messageText);
+    //     QPushButton* yesButton = msgBox.addButton(tr("Yes"), QMessageBox::AcceptRole);
+    //     QPushButton* noButton = msgBox.addButton(tr("No"), QMessageBox::RejectRole);
+    //     msgBox.exec();
+
+    //     // بررسی انتخاب کاربر
+    //     if (msgBox.clickedButton() == yesButton) {
+    //         qDebug() << "Player accepted the swap request.";
+    //         // ارسال پاسخ مثبت به سرور
+    //         QJsonObject response;
+    //         response["type"] = "Swap_Accepted";
+    //         response["username"] = username;
+    //         response["request_from_username"] = requestFrom;
+    //         QJsonDocument responseDoc(response);
+    //         socket->write(responseDoc.toJson(QJsonDocument::Compact));
+    //         socket->flush();
+    //     } else if (msgBox.clickedButton() == noButton) {
+    //         qDebug() << "Player rejected the swap request.";
+    //         // ارسال پاسخ منفی به سرور
+    //         QJsonObject response;
+    //         response["type"] = "Swap_Rejected";
+    //         response["username"] = username;
+    //         response["request_from_username"] = requestFrom;
+    //         QJsonDocument responseDoc(response);
+    //         socket->write(responseDoc.toJson(QJsonDocument::Compact));
+    //         socket->flush();
+    //     }
+    // }
+
     if (type == "Pause_Notification" || type == "Game_Resumed" || type == "Game_Paused" ||
         type == "Inactivity_Warning" || type == "Invalid_Selection" || type == "Game_Paused_Error" || type == "Player_Disconnected_Warning") {
         QString messageText = serverData.value("message").toString();
@@ -496,6 +594,7 @@ void GameBoard::handleServerMessage(const QString& message) {
                 qDebug() << "Card hidden:" << key;
             }
         }
+
 
         QString usernameFromServer = serverData.value("username").toString();
         int sequenceNumber = serverData.value("sequence_number").toInt();
@@ -733,7 +832,8 @@ void GameBoard::processBufferedCardMessages() {
 //     gameMessageLabel->show();
 //     // QMessageBox::information(this, "دست اولیه", "دست اولیه شما دریافت شد.");
 // }
-void GameBoard::processInitialHandMessage(const QJsonObject& obj) {
+void GameBoard::processInitialHandMessage(const QJsonObject& obj)
+{
     qDebug() << "processInitialHandMessage called!";
 
     if (obj.contains("cards") && obj["cards"].isArray()) {
@@ -809,6 +909,7 @@ void GameBoard::processInitialHandMessage(const QJsonObject& obj) {
         qDebug() << "Initial_Hand message does not contain valid cards!";
     }
 }
+
 void GameBoard::processYourTurnMessage(const QJsonObject& obj) {
     qDebug() << "processYourTurnMessage called!";
 
