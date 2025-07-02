@@ -5,69 +5,75 @@
 #include <QList>
 #include <QMap>
 #include <QTimer>
-#include "PlayerInGame.h"
+#include <QDateTime>
 #include "Deck.h"
+#include "PlayerInGame.h"
+#include "PofferRankEvaluator.h"
 #include "GameHistoryEntry.h"
 #include "Users.h"
 #include "chanells.h"
-#include "GameException.h"
-#include"Pofferrankevaluator.h"
 
 class GameSession : public QObject
 {
     Q_OBJECT
+
 public:
     explicit GameSession(const QStringList& playerUsernames, QMap<QString, chanells*>& playerChannels, Users* usersRef, QObject *parent = nullptr);
+    ~GameSession() override = default;
 
     void startGame();
-    void startRound();
-
+    QMap<QString, PlayerInGame*> getPlayersMap() const;
     void processClientAction(const QString& username, const QJsonObject& actionData);
 
-    QMap<QString, PlayerInGame*> getPlayersMap() const;
-
 signals:
-    void gameEnded(QString winnerUsername);
-    void roundEnded(int roundNumber, QString winnerUsername, QMap<QString, QString> roundResults);
+    void roundEnded(int roundNumber, const QString& winnerUsername, const QMap<QString, QString>& roundResults);
+    void gameEnded(const QString& winnerUsername);
     void gameSessionDestroyed(GameSession* session);
 
 public slots:
-    void handleSwapRequest(const QString& requestFromUsername, const QString& requestToUsername, const QJsonObject& cardToSwapJson);
-    void handleSwapResponse(const QString& responseFromUsername, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson);
-
-
-private slots:
-    void handlePlayerCardSelection(PlayerInGame* player, const Card& card);
-    void handlePlayerTurnTimeout(PlayerInGame* player);
     void handlePlayerDisconnected(chanells* channel);
     void handlePlayerExit(PlayerInGame* player);
+    void handleSwapRequest(PlayerInGame* player, const QString& requestToUsername, const QJsonObject& cardToSwapJson);
+    void handleSwapResponse(PlayerInGame* player, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson);
+    void handlePauseRequest(PlayerInGame* player);
+    void handleResumeRequest(PlayerInGame* player);
 
-private:
+private slots:
+    void startRound();
     void determineStartingPlayer();
     void dealInitialCards();
     void collectPlayerSelections();
-    void evaluateRound();
-    void endGame(PlayerInGame* winner = nullptr, bool earlyExit = false);
-    void saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit);
-    bool isSwapAllowed() const;
-    void executeSwap(PlayerInGame* player1, const Card& card1, PlayerInGame* player2, const Card& card2);
+    void handlePlayerCardSelection(PlayerInGame* player, const Card& selectedCard);
+    void handlePlayerTurnTimeout(PlayerInGame* player);
+    void handlePauseTimeout();
 
+private:
+    void executeSwap(PlayerInGame* player1, const Card& card1, PlayerInGame* player2, const Card& card2);
+    bool isSwapAllowed() const;
+    void evaluateRound();
+    void endGame(PlayerInGame* winner, bool earlyExit = false, PlayerInGame* losingPlayerOnPauseTimeout = nullptr);
+    void saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit, PlayerInGame* losingPlayerOnPauseTimeout);
+
+    Deck m_deck;
     QList<PlayerInGame*> m_players;
     QMap<QString, PlayerInGame*> m_playersMap;
-    Deck m_deck;
     int m_currentRound;
     PlayerInGame* m_startingPlayer;
     PlayerInGame* m_currentPlayerTurn;
-    int m_cardsSelectedInCurrentSequence;
-    QList<QPair<PlayerInGame*, Card>> m_currentSelections;
     QTimer m_turnTimer;
     QMap<QString, int> m_playerInactivityCount;
+    int m_cardsSelectedInCurrentSequence;
+    QList<QPair<PlayerInGame*, Card>> m_currentSelections;
     int m_currentSequenceNumber;
-    QMap<QString, QJsonObject> m_pendingSwapRequests; // Key: request_to_username, Value: original Swap_Request JSON from Server::handleMessage
-    QMap<QString, int> m_playerSwapsInitiatedThisRound; // Key: username, Value: count of swaps initiated by player in current round
-
+    QMap<QString, int> m_playerSwapsInitiatedThisRound;
+    QMap<QString, QJsonObject> m_pendingSwapRequests;
     Users* m_usersRef;
 
+    bool m_isPaused;
+    QTimer m_pauseTimer;
+    QString m_pauseInitiatorUsername;
+    QMap<QString, int> m_playerPauseCounts;
+    int m_remainingTurnTime;
 };
 
 #endif // GAMESESSION_H

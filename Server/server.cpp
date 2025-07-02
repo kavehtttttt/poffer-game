@@ -9,6 +9,8 @@
 
 #include "GameManager.h"
 #include "GameSession.h"
+#include"GameException.h"
+#include "PlayerInGame.h"
 
 Server::Server(QObject *parent)
     : QTcpServer(parent)
@@ -45,7 +47,6 @@ void Server::incomingConnection(qintptr socketDescriptor)
 
 void Server::handleMessage(chanells* source, QString msg)
 {
-
     qDebug() << "From client:" << source->getUsername() << "->" << msg;
 
     QJsonParseError error;
@@ -173,14 +174,15 @@ void Server::handleMessage(chanells* source, QString msg)
 
             bool handled = false;
             for (GameSession* session : gameManager->getActiveGameSessions()) {
-                if (session->getPlayersMap().contains(requestFromUsername)) {
-                    session->handleSwapRequest(requestFromUsername, requestToUsername, cardToSwapJson);
+                PlayerInGame* requestFromPlayer = session->getPlayersMap().value(requestFromUsername, nullptr);
+                if (requestFromPlayer) {
+                    session->handleSwapRequest(requestFromPlayer, requestToUsername, cardToSwapJson);
                     handled = true;
                     break;
                 }
             }
             if (!handled) {
-                qWarning() << "Swap_Request from" << requestFromUsername << "not handled: No active game session found.";
+                qWarning() << "Swap_Request from" << requestFromUsername << "not handled: No active game session found or player not in session.";
                 QJsonObject errorMsg;
                 errorMsg["type"] = "Swap_Notification";
                 errorMsg["status"] = "error";
@@ -197,14 +199,55 @@ void Server::handleMessage(chanells* source, QString msg)
 
             bool handled = false;
             for (GameSession* session : gameManager->getActiveGameSessions()) {
-                if (session->getPlayersMap().contains(responseFromUsername)) {
-                    session->handleSwapResponse(responseFromUsername, requestFromUsername, accepted, cardToSwapBackJson);
+                PlayerInGame* responseFromPlayer = session->getPlayersMap().value(responseFromUsername, nullptr);
+                if (responseFromPlayer) {
+                    session->handleSwapResponse(responseFromPlayer, requestFromUsername, accepted, cardToSwapBackJson);
                     handled = true;
                     break;
                 }
             }
             if (!handled) {
-                qWarning() << "Swap_Response from" << responseFromUsername << "not handled: No active game session found.";
+                qWarning() << "Swap_Response from" << responseFromUsername << "not handled: No active game session found or player not in session.";
+            }
+            return;
+        }
+        else if (type == "Pause_Request") {
+            QString username = source->getUsername();
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                PlayerInGame* player = session->getPlayersMap().value(username, nullptr);
+                if (player) {
+                    session->handlePauseRequest(player);
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled) {
+                QJsonObject errorMsg;
+                errorMsg["type"] = "Pause_Notification";
+                errorMsg["status"] = "error";
+                errorMsg["message"] = "Pause request failed: Not in an active game session.";
+                source->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+            }
+            return;
+        }
+        else if (type == "Resume_Request") {
+            QString username = source->getUsername();
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                PlayerInGame* player = session->getPlayersMap().value(username, nullptr);
+                if (player) {
+                    session->handleResumeRequest(player);
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled) {
+                QJsonObject errorMsg;
+                errorMsg["type"] = "Pause_Notification";
+                errorMsg["status"] = "error";
+                errorMsg["message"] = "Resume request failed: Not in an active game session.";
+                source->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
             }
             return;
         }
@@ -214,13 +257,6 @@ void Server::handleMessage(chanells* source, QString msg)
                 {"message", "Unknown request type"}
             };
         }
-    }
-    catch (const UserException& ex) {
-        response = QJsonObject{
-            {"type", type},
-            {"status", "error"},
-            {"message", ex.what()}
-        };
     }
     catch (const GameException& ex) {
         response = QJsonObject{
@@ -237,7 +273,7 @@ void Server::handleMessage(chanells* source, QString msg)
         };
     }
 
-    if (!response.isEmpty() && type != "Player_Selected_Card" && type != "start_game" && type != "Swap_Request" && type != "Swap_Response") {
+    if (!response.isEmpty() && type != "Player_Selected_Card" && type != "start_game" && type != "Swap_Request" && type != "Swap_Response" && type != "Pause_Request" && type != "Resume_Request") {
         QJsonDocument docRes(response);
         qDebug() << "Server sending to client" << source->getUsername() << "data:" << QString::fromUtf8(docRes.toJson(QJsonDocument::Compact));
         source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
@@ -251,10 +287,6 @@ void Server::handleDisconnection()
     {
         qDebug() << "Client" << channel->getUsername() << "disconnected. Removing from list.";
         gameManager->removePlayerFromWaitingRoom(channel->getUsername());
-        for (GameSession* session : gameManager->getActiveGameSessions()) {
-            if (session->getPlayersMap().contains(channel->getUsername())) {
-            }
-        }
         clients.removeOne(channel);
         channel->deleteLater();
     }

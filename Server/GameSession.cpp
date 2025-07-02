@@ -1,4 +1,5 @@
 #include "GameSession.h"
+#include"GameException.h"
 #include <QDebug>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -15,8 +16,10 @@ GameSession::GameSession(const QStringList& playerUsernames, QMap<QString, chane
     m_startingPlayer(nullptr),
     m_currentPlayerTurn(nullptr),
     m_cardsSelectedInCurrentSequence(0),
-    m_currentSequenceNumber(0), // Initialize new member
-    m_usersRef(usersRef)
+    m_currentSequenceNumber(0),
+    m_usersRef(usersRef),
+    m_isPaused(false),
+    m_remainingTurnTime(0)
 {
     if (playerUsernames.size() != 4) {
         throw GameException("GameSession must be initialized with exactly 4 players.");
@@ -28,6 +31,7 @@ GameSession::GameSession(const QStringList& playerUsernames, QMap<QString, chane
             PlayerInGame* player = new PlayerInGame(username, channel, this);
             m_players.append(player);
             m_playersMap.insert(username, player);
+            m_playerPauseCounts.insert(username, 0);
             qDebug() << "- Player added:" << username;
 
 
@@ -43,6 +47,8 @@ GameSession::GameSession(const QStringList& playerUsernames, QMap<QString, chane
             handlePlayerTurnTimeout(m_currentPlayerTurn);
         }
     });
+
+    connect(&m_pauseTimer, &QTimer::timeout, this, &GameSession::handlePauseTimeout);
 
     qDebug() << "GameSession initialized with" << m_players.size() << "players.";
 }
@@ -60,10 +66,21 @@ void GameSession::processClientAction(const QString& username, const QJsonObject
     QString type = actionData["type"].toString();
 
     if (type == "Player_Selected_Card") {
+        if (m_isPaused) {
+            QJsonObject errorMsg;
+            errorMsg["type"] = "Game_Paused_Error";
+            errorMsg["message"] = "Cannot select card while game is paused.";
+            player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+            return;
+        }
         QJsonObject cardObj = actionData["card"].toObject();
         Card selectedCard(cardObj["suit"].toInt(), cardObj["rank"].toInt());
 
         handlePlayerCardSelection(player, selectedCard);
+    } else if (type == "Pause_Request") {
+        handlePauseRequest(player);
+    } else if (type == "Resume_Request") {
+        handleResumeRequest(player);
     }
     else {
         qWarning() << "GameSession: Unknown client action type received:" << type;
@@ -113,6 +130,7 @@ void GameSession::startRound(){
     m_currentSequenceNumber = 1;
 
     determineStartingPlayer();
+
     QJsonObject roundStartMsg;
     roundStartMsg["type"] = "Round_Start";
     roundStartMsg["round_number"] = m_currentRound;
@@ -125,9 +143,8 @@ void GameSession::startRound(){
             player->getClientChannel()->sendMessage(msg);
         }
     }
+
     QTimer::singleShot(10 * 1000, this, &GameSession::dealInitialCards);
-
-
 }
 
 void GameSession::determineStartingPlayer() {
@@ -249,6 +266,13 @@ void GameSession::collectPlayerSelections() {
 
 
 void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& selectedCard) {
+    if (m_isPaused) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Game_Paused_Error";
+        errorMsg["message"] = "Cannot select card while game is paused.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
     if (player != m_currentPlayerTurn) {
         qWarning() << "GameSession: Received card selection from wrong player:" << player->getUsername() << ". Expected:" << m_currentPlayerTurn->getUsername();
         return;
@@ -341,39 +365,38 @@ void GameSession::handlePlayerCardSelection(PlayerInGame* player, const Card& se
     }
 }
 
-void GameSession::handleSwapRequest(const QString& requestFromUsername, const QString& requestToUsername, const QJsonObject& cardToSwapJson) {
-    qDebug() << "Swap Request from" << requestFromUsername << "to" << requestToUsername << "for card" << cardToSwapJson;
+void GameSession::handleSwapRequest(PlayerInGame* player, const QString& requestToUsername, const QJsonObject& cardToSwapJson) {
+    qDebug() << "Swap Request from" << player->getUsername() << "to" << requestToUsername << "for card" << cardToSwapJson;
 
-    PlayerInGame* requestFromPlayer = m_playersMap.value(requestFromUsername);
     PlayerInGame* requestToPlayer = m_playersMap.value(requestToUsername);
 
-    if (!requestFromPlayer || !requestToPlayer) {
-        qWarning() << "Swap Request: Player not found.";
+    if (!requestToPlayer) {
+        qWarning() << "Swap Request: Target player not found.";
         QJsonObject errorMsg;
         errorMsg["type"] = "Swap_Notification";
         errorMsg["status"] = "error";
-        errorMsg["message"] = "Swap failed: One or both players not found.";
-        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        errorMsg["message"] = "Swap failed: Target player not found.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
         return;
     }
-    if (requestFromPlayer != m_currentPlayerTurn) {
+    if (player != m_currentPlayerTurn) {
         qWarning() << "Swap Request: Not requestFromPlayer's turn.";
         QJsonObject errorMsg;
         errorMsg["type"] = "Swap_Notification";
         errorMsg["status"] = "error";
         errorMsg["message"] = "Swap failed: It's not your turn to initiate a swap.";
-        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
         return;
     }
 
     Card cardToSwap(cardToSwapJson["suit"].toInt(), cardToSwapJson["rank"].toInt());
-    if (!requestFromPlayer->getHand()->getCards().contains(cardToSwap)) {
+    if (!player->getHand()->getCards().contains(cardToSwap)) {
         qWarning() << "Swap Request: Card not in requestFromPlayer's hand.";
         QJsonObject errorMsg;
         errorMsg["type"] = "Swap_Notification";
         errorMsg["status"] = "error";
         errorMsg["message"] = "Swap failed: The card you offered is not in your hand.";
-        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
         return;
     }
 
@@ -383,7 +406,7 @@ void GameSession::handleSwapRequest(const QString& requestFromUsername, const QS
         errorMsg["type"] = "Swap_Notification";
         errorMsg["status"] = "error";
         errorMsg["message"] = "Swap failed: Swapping is not allowed in the last sequence.";
-        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
         return;
     }
 
@@ -393,30 +416,29 @@ void GameSession::handleSwapRequest(const QString& requestFromUsername, const QS
         errorMsg["type"] = "Swap_Notification";
         errorMsg["status"] = "error";
         errorMsg["message"] = QString("%1 already has a pending swap request. Please wait.").arg(requestToUsername);
-        requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
         return;
     }
 
     QJsonObject originalRequestData;
-    originalRequestData["request_from_username"] = requestFromUsername;
+    originalRequestData["request_from_username"] = player->getUsername();
     originalRequestData["request_to_username"] = requestToUsername;
     originalRequestData["card_to_swap"] = cardToSwapJson;
     m_pendingSwapRequests.insert(requestToUsername, originalRequestData);
 
     QJsonObject swapOfferMsg;
     swapOfferMsg["type"] = "Swap_Offer";
-    swapOfferMsg["from_username"] = requestFromUsername;
+    swapOfferMsg["from_username"] = player->getUsername();
     swapOfferMsg["card_offered"] = cardToSwapJson;
-    swapOfferMsg["message"] = QString("Player %1 wants to swap %2 with you. Do you accept?").arg(requestFromUsername).arg(cardToSwap.toString());
+    swapOfferMsg["message"] = QString("Player %1 wants to swap %2 with you. Do you accept?").arg(player->getUsername()).arg(cardToSwap.toString());
     requestToPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(swapOfferMsg).toJson(QJsonDocument::Compact)));
 
     qDebug() << "Swap request sent to" << requestToUsername;
 }
 
-void GameSession::handleSwapResponse(const QString& responseFromUsername, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson) {
-    qDebug() << "Swap Response from" << responseFromUsername << ": Accepted=" << accepted;
+void GameSession::handleSwapResponse(PlayerInGame* responseFromPlayer, const QString& requestFromUsername, bool accepted, const QJsonObject& cardToSwapBackJson) {
+    qDebug() << "Swap Response from" << responseFromPlayer->getUsername() << ": Accepted=" << accepted;
 
-    PlayerInGame* responseFromPlayer = m_playersMap.value(responseFromUsername);
     PlayerInGame* requestFromPlayer = m_playersMap.value(requestFromUsername);
 
     if (!responseFromPlayer || !requestFromPlayer) {
@@ -424,12 +446,12 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
         return;
     }
 
-    if (!m_pendingSwapRequests.contains(responseFromUsername)) {
-        qWarning() << "Swap Response: No pending swap request for" << responseFromUsername;
+    if (!m_pendingSwapRequests.contains(responseFromPlayer->getUsername())) {
+        qWarning() << "Swap Response: No pending swap request for" << responseFromPlayer->getUsername();
         return;
     }
 
-    QJsonObject originalRequestData = m_pendingSwapRequests.take(responseFromUsername);
+    QJsonObject originalRequestData = m_pendingSwapRequests.take(responseFromPlayer->getUsername());
     Card originalCardToSwap(originalRequestData["card_to_swap"].toObject()["suit"].toInt(), originalRequestData["card_to_swap"].toObject()["rank"].toInt());
 
     if (accepted) {
@@ -450,10 +472,10 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
         QJsonObject successMsg;
         successMsg["type"] = "Swap_Notification";
         successMsg["status"] = "success";
-        successMsg["message"] = QString("%1 and %2 successfully swapped cards!").arg(requestFromUsername).arg(responseFromUsername);
+        successMsg["message"] = QString("%1 and %2 successfully swapped cards!").arg(requestFromUsername).arg(responseFromPlayer->getUsername());
         successMsg["player1_username"] = requestFromUsername;
         successMsg["player1_card_sent"] = originalCardToSwap.toJson();
-        successMsg["player2_username"] = responseFromUsername;
+        successMsg["player2_username"] = responseFromPlayer->getUsername();
         successMsg["player2_card_sent"] = cardToSwapBack.toJson();
         QString msg = QString::fromUtf8(QJsonDocument(successMsg).toJson(QJsonDocument::Compact));
 
@@ -480,10 +502,10 @@ void GameSession::handleSwapResponse(const QString& responseFromUsername, const 
         QJsonObject rejectMsg;
         rejectMsg["type"] = "Swap_Notification";
         rejectMsg["status"] = "rejected";
-        rejectMsg["message"] = QString("Swap request rejected by %1.").arg(responseFromUsername);
+        rejectMsg["message"] = QString("Swap request rejected by %1.").arg(responseFromPlayer->getUsername());
         rejectMsg["request_from_username"] = requestFromUsername;
         requestFromPlayer->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(rejectMsg).toJson(QJsonDocument::Compact)));
-        qDebug() << "Swap request rejected by" << responseFromUsername;
+        qDebug() << "Swap request rejected by" << responseFromPlayer->getUsername();
 
         QJsonObject turnMsg;
         turnMsg["type"] = "Your_Turn";
@@ -516,7 +538,7 @@ void GameSession::executeSwap(PlayerInGame* player1, const Card& card1, PlayerIn
 }
 
 bool GameSession::isSwapAllowed() const {
-    return m_currentSequenceNumber < 5; // Swap is not allowed in the 5th (last) sequence.
+    return m_currentSequenceNumber < 5;
 }
 
 
@@ -566,7 +588,6 @@ void GameSession::evaluateRound() {
             roundResultsArray.append(playerResult);
         }
 
-        // NEW: Send Round_End message to all clients
         QJsonObject roundEndMsg;
         roundEndMsg["type"] = "Round_End";
         roundEndMsg["round_number"] = m_currentRound;
@@ -612,13 +633,21 @@ void GameSession::evaluateRound() {
     }
 }
 
-void GameSession::endGame(PlayerInGame* winner, bool earlyExit) {
+void GameSession::endGame(PlayerInGame* winner, bool earlyExit, PlayerInGame* losingPlayerOnPauseTimeout) {
     qDebug() << "GameSession: Game ended.";
     m_turnTimer.stop();
+    m_pauseTimer.stop();
+    m_isPaused = false;
+    m_pauseInitiatorUsername.clear();
 
     QString winnerUsername = "No Winner";
     QString gameEndMessageText;
-    if (winner) {
+
+    if (losingPlayerOnPauseTimeout) {
+        winnerUsername = "No Winner";
+        gameEndMessageText = QString("Game ended because %1 failed to resume after pausing. Other players are returned to the menu.").arg(losingPlayerOnPauseTimeout->getUsername());
+        qDebug() << "Game ended due to pause timeout. Losing player:" << losingPlayerOnPauseTimeout->getUsername();
+    } else if (winner) {
         winnerUsername = winner->getUsername();
         gameEndMessageText = QString("The game has ended! %1 is the final winner!").arg(winnerUsername);
         qDebug() << "Game Winner:" << winnerUsername;
@@ -629,9 +658,8 @@ void GameSession::endGame(PlayerInGame* winner, bool earlyExit) {
         gameEndMessageText = "The game has ended. No clear winner (draw or special scenario).";
     }
 
-    QMap<QString, QString> finalRoundResults;
-    saveGameHistory(finalRoundResults, winner, earlyExit);
-
+    QMap<QString, QString> finalRoundResults; // This map is not used consistently in saveGameHistory logic
+    saveGameHistory(finalRoundResults, winner, earlyExit, losingPlayerOnPauseTimeout);
 
     QJsonObject gameEndMsg;
     gameEndMsg["type"] = "Game_End";
@@ -661,11 +689,16 @@ void GameSession::endGame(PlayerInGame* winner, bool earlyExit) {
     emit gameSessionDestroyed(this);
 }
 
-void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit) {
+void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResults, PlayerInGame* winner, bool earlyExit, PlayerInGame* losingPlayerOnPauseTimeout) {
     qDebug() << "GameSession: Saving game history.";
     QString winnerUsername = winner ? winner->getUsername() : "N/A";
 
     for (PlayerInGame* player : m_players) {
+        if (losingPlayerOnPauseTimeout && player != losingPlayerOnPauseTimeout) {
+            qDebug() << "Not saving history for" << player->getUsername() << "due to pause timeout by another player.";
+            continue;
+        }
+
         GameHistoryEntry entry;
         entry.dateOfPlay = QDateTime::currentDateTime();
 
@@ -678,8 +711,13 @@ void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResult
         entry.opponentUsername = opponents.join(", ");
 
         if (earlyExit) {
-            entry.finalResult = "Incomplete/Disconnected";
-            entry.roundResults.append("Game interrupted");
+            if (losingPlayerOnPauseTimeout == player) {
+                entry.finalResult = "Loss (Pause Timeout)";
+                entry.roundResults.append("Game ended due to pause timeout");
+            } else {
+                entry.finalResult = "Incomplete/Disconnected";
+                entry.roundResults.append("Game interrupted");
+            }
         } else if (player == winner) {
             entry.finalResult = "Win";
         } else if (!winner && !earlyExit) {
@@ -689,12 +727,12 @@ void GameSession::saveGameHistory(const QMap<QString, QString>& finalRoundResult
             entry.finalResult = "Loss";
         }
 
-        if (!earlyExit) {
+        if (!earlyExit || (earlyExit && losingPlayerOnPauseTimeout == player)) {
             entry.roundResults.clear();
             for(int i = 0; i < player->getRoundsWon(); ++i) {
                 entry.roundResults.append(QString("Won Round %1").arg(i+1));
             }
-            if (player->getRoundsWon() == 0 && entry.finalResult != "Loss" && entry.finalResult != "Draw") {
+            if (player->getRoundsWon() == 0 && entry.finalResult != "Loss" && entry.finalResult != "Draw" && entry.finalResult != "Loss (Pause Timeout)") {
                 entry.roundResults.append("No Rounds Won");
             }
         }
@@ -736,7 +774,7 @@ void GameSession::handlePlayerDisconnected(chanells* channel) {
         }
 
         QTimer::singleShot(60 * 1000, this, [this, disconnectedPlayer, channel]() {
-            if (!m_playersMap.contains(disconnectedPlayer->getUsername()) || (disconnectedPlayer->getClientChannel() == channel && channel->getSocket()->state() != QAbstractSocket::ConnectedState)) {
+            if (!m_playersMap.contains(disconnectedPlayer->getUsername()) || (disconnectedPlayer->getClientChannel() == channel && disconnectedPlayer->getClientChannel()->getSocket()->state() != QAbstractSocket::ConnectedState)) {
                 qDebug() << "Player" << disconnectedPlayer->getUsername() << "did not reconnect within 60 seconds. Ending game.";
                 QJsonObject finalDisconnectMsg;
                 finalDisconnectMsg["type"] = "Player_Disconnected_End";
@@ -776,6 +814,10 @@ void GameSession::handlePlayerExit(PlayerInGame* player) {
 }
 
 void GameSession::handlePlayerTurnTimeout(PlayerInGame* player) {
+    if (m_isPaused) {
+        qDebug() << "Turn timeout ignored as game is paused.";
+        return;
+    }
     qDebug() << "GameSession: Player turn timeout for" << player->getUsername();
     m_playerInactivityCount[player->getUsername()]++;
 
@@ -813,4 +855,125 @@ void GameSession::handlePlayerTurnTimeout(PlayerInGame* player) {
         }
         endGame(nullptr, true);
     }
+}
+
+void GameSession::handlePauseRequest(PlayerInGame* player) {
+    if (m_isPaused) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Pause_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Game is already paused.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    if (player != m_currentPlayerTurn) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Pause_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Only the current player can pause the game.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    if (m_playerPauseCounts[player->getUsername()] >= 2) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Pause_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "You have reached the maximum number of pauses (2).";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    m_isPaused = true;
+    m_pauseInitiatorUsername = player->getUsername();
+    m_playerPauseCounts[player->getUsername()]++;
+
+    m_remainingTurnTime = m_turnTimer.remainingTime();
+    if (m_remainingTurnTime < 0) {
+        m_remainingTurnTime = 0;
+    }
+    m_turnTimer.stop();
+
+    m_pauseTimer.start(20 * 1000);
+
+    qDebug() << "Game paused by" << player->getUsername();
+
+    QJsonObject pauseMsg;
+    pauseMsg["type"] = "Game_Paused";
+    pauseMsg["initiator_username"] = player->getUsername();
+    pauseMsg["message"] = QString("Game paused by %1. You have 20 seconds to resume.").arg(player->getUsername());
+    QJsonDocument doc(pauseMsg);
+    QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    for (PlayerInGame* p : m_players) {
+        if (p->getClientChannel()) {
+            p->getClientChannel()->sendMessage(msg);
+        }
+    }
+}
+
+void GameSession::handleResumeRequest(PlayerInGame* player) {
+    if (!m_isPaused) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Pause_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Game is not paused.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    if (player->getUsername() != m_pauseInitiatorUsername) {
+        QJsonObject errorMsg;
+        errorMsg["type"] = "Pause_Notification";
+        errorMsg["status"] = "error";
+        errorMsg["message"] = "Only the player who paused the game can resume it.";
+        player->getClientChannel()->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+        return;
+    }
+
+    m_isPaused = false;
+    m_pauseTimer.stop();
+    m_pauseInitiatorUsername.clear();
+
+    if (m_remainingTurnTime > 0) {
+        m_turnTimer.start(m_remainingTurnTime);
+    } else {
+        m_turnTimer.start(20 * 1000);
+    }
+
+    qDebug() << "Game resumed by" << player->getUsername();
+
+    QJsonObject resumeMsg;
+    resumeMsg["type"] = "Game_Resumed";
+    resumeMsg["resumer_username"] = player->getUsername();
+    resumeMsg["message"] = QString("Game resumed by %1. Turn timer restarted.").arg(player->getUsername());
+    QJsonDocument doc(resumeMsg);
+    QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    for (PlayerInGame* p : m_players) {
+        if (p->getClientChannel()) {
+            p->getClientChannel()->sendMessage(msg);
+        }
+    }
+}
+
+void GameSession::handlePauseTimeout() {
+    qDebug() << "Pause timer timed out. Ending game.";
+
+    QJsonObject timeoutMsg;
+    timeoutMsg["type"] = "Pause_Timeout";
+    timeoutMsg["message"] = QString("Game ended because %1 failed to resume the game within 20 seconds.").arg(m_pauseInitiatorUsername);
+    QJsonDocument doc(timeoutMsg);
+    QString msg = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    for (PlayerInGame* p : m_players) {
+        if (p->getClientChannel()) {
+            p->getClientChannel()->sendMessage(msg);
+        }
+    }
+
+    PlayerInGame* initiatorPlayer = m_playersMap.value(m_pauseInitiatorUsername);
+
+    endGame(nullptr, true, initiatorPlayer);
 }

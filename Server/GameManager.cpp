@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include "GameException.h"
+#include "UserException.h"
 
 GameManager::GameManager(Users* usersRef, QObject *parent)
     : QObject(parent),
@@ -122,12 +124,20 @@ void GameManager::tryStartGame() {
             connect(newGameSession, &GameSession::gameEnded, this, &GameManager::handleGameSessionEnded);
             connect(newGameSession, &GameSession::gameSessionDestroyed, this, &GameManager::handleGameSessionDestroyed);
 
+            for(PlayerInGame* player : newGameSession->getPlayersMap().values()) {
+                connect(player->getClientChannel(), &chanells::disconnected, newGameSession, [newGameSession, player]() {
+                    newGameSession->handlePlayerDisconnected(player->getClientChannel());
+                });
+            }
+
+
             newGameSession->startGame();
             qDebug() << "GameManager: New GameSession started with players:" << playerUsernames.join(", ");
 
             emit gameSessionStarted(playerUsernames);
 
-        } catch (const GameException& ex) {
+        }
+        catch (const GameException& ex) {
             qWarning() << "GameManager: Failed to start GameSession:" << ex.what();
             for (const QString& username : playerUsernames) {
                 m_waitingClients.insert(username, playerChannelsForSession.value(username));
