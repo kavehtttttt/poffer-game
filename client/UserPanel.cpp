@@ -151,10 +151,12 @@ void UserPanel::handleServerMessage()
     while (socket->bytesAvailable()) {
         QByteArray data = socket->readAll().trimmed();
         int startIndex = 0;
+
         while (startIndex < data.size()) {
             int openBraces = 0;
             int endIndex = -1;
 
+            // Find a complete JSON message
             for (int i = startIndex; i < data.size(); ++i) {
                 if (data[i] == '{') openBraces++;
                 else if (data[i] == '}') openBraces--;
@@ -165,21 +167,67 @@ void UserPanel::handleServerMessage()
                 }
             }
 
-            if (endIndex == -1) break;
+            if (endIndex == -1) break; // Wait for more data if the message is incomplete
 
+            // Extract the complete JSON message
             QByteArray jsonData = data.mid(startIndex, endIndex - startIndex + 1);
             startIndex = endIndex + 1;
 
+            // Parse the JSON message
             QJsonParseError err;
             QJsonDocument doc = QJsonDocument::fromJson(jsonData, &err);
-            if (err.error != QJsonParseError::NoError || !doc.isObject())
+            if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+                qDebug() << "Invalid JSON received:" << jsonData;
                 continue;
+            }
 
             QJsonObject obj = doc.object();
             QString type = obj["type"].toString();
-            QString message = obj["message"].toString();
 
-            if (type == "Game_Start") {
+            // Handle Get_History message
+            if (type == "Get_History") {
+                QString status = obj["status"].toString();
+                if (status != "success") {
+                    QMessageBox::warning(this, "Error", obj["message"].toString());
+                    return;
+                }
+
+                // Process game history
+                QJsonArray historyArray = obj["history"].toArray();
+                QString allHistoryDetails;
+
+                for (const QJsonValue &val : historyArray) {
+                    QJsonObject entry = val.toObject();
+
+                    QString dateOfPlay = entry["date_of_play"].toString();
+                    QString finalResult = entry["final_result"].toString();
+                    QString opponents = entry["opponent_username"].toString();
+                    QJsonArray roundResults = entry["round_results"].toArray();
+
+                    QString roundDetails;
+                    for (const QJsonValue &round : roundResults) {
+                        roundDetails += round.toString() + ", ";
+                    }
+                    if (!roundDetails.isEmpty()) {
+                        roundDetails.chop(2); // Remove extra comma and space
+                    }
+
+                    QString historyItem = QString("Date: %1\nResult: %2\nOpponents: %3\nRounds: %4\n\n")
+                                              .arg(dateOfPlay)
+                                              .arg(finalResult)
+                                              .arg(opponents)
+                                              .arg(roundDetails);
+
+                    allHistoryDetails += historyItem; // Collect all game details
+                }
+
+                // Show all game details in a message box
+                QMessageBox::information(this, "Game History", allHistoryDetails);
+
+            } else if (type == "Game_Start") {
+                qDebug() << "Processing Game_Start message";
+
+                // Extract players list from the Game_Start message
                 QStringList playersList;
                 if (obj.contains("players_in_game") && obj["players_in_game"].isArray()) {
                     QJsonArray arr = obj["players_in_game"].toArray();
@@ -187,34 +235,46 @@ void UserPanel::handleServerMessage()
                         playersList.append(val.toString());
                 }
 
+                // Display a message to indicate the game is starting
                 QString infoText = "✅ بازی شروع شد!\n\n👥 بازیکنان:\n";
                 for (const QString &player : playersList)
                     infoText += "• " + player + "\n";
 
                 QMessageBox::information(this, "Game Starting", infoText);
 
-                // داده‌های باقی‌مانده سوکت را استخراج کن
-                QString remainingData;
-                while (socket->bytesAvailable()) {
-                    remainingData += QString::fromUtf8(socket->readAll());
-                }
-
+                // Create and show the GameBoard page
                 this->hide();
-                auto *gameWindow = new GameBoard(nullptr, socket, &username, &playersList, remainingData);
+                auto *gameWindow = new GameBoard(nullptr, socket, username, &playersList, "");
                 gameWindow->show();
                 this->deleteLater();
                 return;
+
+            } else {
+                qDebug() << "Unhandled message type:" << type;
             }
         }
     }
 }
-
 void UserPanel::onHistoryClicked()
 {
-    this->hide();
-    auto *history = new HistoryView(nullptr, socket, username);
-    history->show();
-    this->deleteLater();
+    // بررسی اتصال به سرور
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        QMessageBox::warning(this, "Error", "Not connected to server.");
+        return;
+    }
+
+    // ایجاد پیام JSON برای درخواست تاریخچه
+    QJsonObject req;
+    req["type"] = "Get_History";
+    req["username"] = username;
+
+    QByteArray reqData = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+
+    // ارسال پیام به سرور
+    socket->write(reqData);
+    socket->flush();
+
+    qDebug() << "Sent Get_History request:" << QString::fromUtf8(reqData);
 }
 
 void UserPanel::onEditInfoClicked()

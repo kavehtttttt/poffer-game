@@ -88,7 +88,6 @@ EditInfo::EditInfo(QWidget *parent, QTcpSocket *socket, const QString &username)
     connect(submitButton, &QPushButton::clicked, this, &EditInfo::handleEditRequest);
     connectAllCheckboxes();
 
-    // اینجا کانکت برای دریافت پاسخ از سرور
     connect(socket, &QTcpSocket::readyRead, this, &EditInfo::handleServerResponse);
 }
 

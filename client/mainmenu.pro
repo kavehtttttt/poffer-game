@@ -10,7 +10,6 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    CardRevealManager.cpp \
     CardWidget.cpp \
     EditInfo.cpp \
     GameBoard.cpp \
@@ -25,7 +24,6 @@ SOURCES += \
     signup.cpp
 
 HEADERS += \
-    CardRevealManager.h \
     CardWidget.h \
     EditInfo.h \
     GameBoard.h \

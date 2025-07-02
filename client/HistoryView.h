@@ -1,6 +1,7 @@
 #ifndef HISTORYVIEW_H
 #define HISTORYVIEW_H
 
+#include "qjsonobject.h"
 #include <QWidget>
 #include <QTcpSocket>
 #include <QVBoxLayout>
@@ -13,19 +14,19 @@ class HistoryView : public QWidget
     Q_OBJECT
 
 public:
-    explicit HistoryView(QWidget *parent = nullptr, QTcpSocket *socket = nullptr, const QString &username = "");
+    explicit HistoryView(QWidget *parent = nullptr, QTcpSocket *socket = nullptr, const QString &username = "", const QJsonObject &gameHistory = QJsonObject());
 
 private slots:
     void goBack();
-    void onDataReceived();
 
 private:
-    void sendHistoryRequest();
     void setupUI();
-
+    void displayHistory();
+    void onDataReceived();
+    void sendHistoryRequest();
     QTcpSocket *socket;
     QString username;
-
+    QJsonObject gameHistory; // ذخیره پیام تاریخچه بازی
     QLabel *connectionStatusLabel;
     QListWidget *historyListWidget;
     QPushButton *backButton;

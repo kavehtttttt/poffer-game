@@ -16,7 +16,7 @@ class CardWidget;
 
 struct PlayerCardInfo {
     QString username;
-    QString side; // "T", "R", "L", "B"
+    QString side;
     int rank;
     int suit;
 };
@@ -25,10 +25,10 @@ class GameBoard : public QWidget
 {
     Q_OBJECT
 public:
-    explicit GameBoard(QWidget *parent, QTcpSocket* socket, QString* username, QStringList* otherPlayers, const QString& initialBuffer = "");
+    explicit GameBoard(QWidget *parent, QTcpSocket* socket, QString& username, QStringList* otherPlayers, const QString& initialBuffer = "");
 
 private slots:
-    void handleCardClick(const QString& cardText); // Handle clicks on cards
+    void handleCardClick(const QString& cardText);
 
 private:
     void setupScene();
@@ -41,15 +41,14 @@ private:
     void updateConnectionStatus();
     void handleServerMessage(const QString& message);
     void processInitialData(const QString& data);
-
     void revealThirdCardsSequentially(const QVector<PlayerCardInfo>& cardInfos);
     void processBufferedCardMessages();
     void processInitialHandMessage(const QJsonObject& obj);
     void processYourTurnMessage(const QJsonObject& obj);
-
+    bool thirdCardsDisplayed = false;
     QTcpSocket *socket;
     QStringList *otherPlayers;
-    QString *username;
+    QString username;
     QString buffer;
 
     QMap<QString, QString> playerToSide;

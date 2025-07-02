@@ -1,6 +1,7 @@
 #ifndef USERPANEL_H
 #define USERPANEL_H
 
+#include "qjsonobject.h"
 #include <QMainWindow>
 #include <QTcpSocket>
 #include <QLabel>
@@ -24,7 +25,7 @@ private slots:
 private:
     void setupUI();
     void updateConnectionStatus();
-
+    QJsonObject gameHistoryMessage; // ذخیره پیام تاریخچه بازی
     QTcpSocket *socket;
     QString username;
 

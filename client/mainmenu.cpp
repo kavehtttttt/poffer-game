@@ -22,14 +22,12 @@ MainMenu::MainMenu(QWidget *parent, QTcpSocket *socket)
     backgroundLabel->setScaledContents(true);
     backgroundLabel->setFixedSize(800, 600);
 
-    // 🔹 برچسب وضعیت اتصال
     connectionStatusLabel = new QLabel(this);
     connectionStatusLabel->setFont(QFont("Georgia", 10, QFont::Bold));
     connectionStatusLabel->setAlignment(Qt::AlignLeft);
     connectionStatusLabel->setGeometry(10, 10, 300, 20); // بالا سمت چپ
     connectionStatusLabel->setStyleSheet("color: white; background: transparent;");
 
-    // مقدار اولیه‌ی وضعیت اتصال
     if (!socket) {
         connectionStatusLabel->setText("Socket is null!");
         connectionStatusLabel->setStyleSheet("color: red; font-weight: bold;");
@@ -74,7 +72,6 @@ MainMenu::MainMenu(QWidget *parent, QTcpSocket *socket)
         btn->setStyleSheet(btnStyle);
     }
 
-    // استایل برای دکمه خروج
     exitButton->setFont(btnFont);
     exitButton->setStyleSheet(
         "QPushButton {"
@@ -118,12 +115,10 @@ MainMenu::MainMenu(QWidget *parent, QTcpSocket *socket)
     centralLayout->setSpacing(0);
     centralWidget->setLayout(centralLayout);
 
-    // اتصال دکمه‌ها
     connect(exitButton, &QPushButton::clicked, this, &QWidget::close);
     connect(signupButton, &QPushButton::clicked, this, &MainMenu::openSignup);
     connect(loginButton, &QPushButton::clicked, this, &MainMenu::openLogin);
 
-    // 🔹 به‌روزرسانی وضعیت اتصال با سیگنال‌های سوکت
     connect(socket, &QTcpSocket::connected, this, [this]() {
         connectionStatusLabel->setText("Connected to server");
         connectionStatusLabel->setStyleSheet("color: lightgreen; font-weight: bold;");
