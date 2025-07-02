@@ -95,16 +95,13 @@ QJsonObject Account::editUsername(const QJsonObject& data) {
 
 QJsonObject Account::editPassword(const QJsonObject& data) {
     QString username = data["username"].toString();
-    QString oldPassword = data["old_password"].toString();
-    QString newPassword = data["new_password"].toString();
+    QString newPassword = data["new_value"].toString();
 
-    if (username.isEmpty() || oldPassword.isEmpty() || newPassword.isEmpty()) {
+    if (username.isEmpty() ||newPassword.isEmpty()) {
         throw UserException("Password fields cannot be empty!");
     }
 
-    if (!usersRef->login(QJsonObject{{"username", username}, {"password", oldPassword}})) {
-        throw UserException("Incorrect old password!");
-    }
+
 
     try {
         if (usersRef->updatePassword(username, newPassword)) {
@@ -115,6 +112,7 @@ QJsonObject Account::editPassword(const QJsonObject& data) {
             };
         } else {
             throw UserException("Failed to update password.");
+
         }
     } catch (const UserException& ex) {
         throw ex;
@@ -123,7 +121,7 @@ QJsonObject Account::editPassword(const QJsonObject& data) {
 
 QJsonObject Account::editEmail(const QJsonObject& data) {
     QString username = data["username"].toString();
-    QString newEmail = data["new_email"].toString();
+    QString newEmail = data["new_value"].toString();
 
     if (username.isEmpty() || newEmail.isEmpty()) {
         throw UserException("Email fields cannot be empty!");
@@ -146,7 +144,7 @@ QJsonObject Account::editEmail(const QJsonObject& data) {
 
 QJsonObject Account::editPhone(const QJsonObject& data) {
     QString username = data["username"].toString();
-    QString newPhone = data["new_phone"].toString();
+    QString newPhone = data["new_value"].toString();
 
     if (username.isEmpty() || newPhone.isEmpty()) {
         throw UserException("Phone fields cannot be empty!");
@@ -169,7 +167,7 @@ QJsonObject Account::editPhone(const QJsonObject& data) {
 
 QJsonObject Account::editFirstName(const QJsonObject& data) {
     QString username = data["username"].toString();
-    QString newFirstName = data["new_first_name"].toString();
+    QString newFirstName = data["new_value"].toString();
 
     if (username.isEmpty() || newFirstName.isEmpty()) {
         throw UserException("First Name fields cannot be empty!");
@@ -192,7 +190,7 @@ QJsonObject Account::editFirstName(const QJsonObject& data) {
 
 QJsonObject Account::editLastName(const QJsonObject& data) {
     QString username = data["username"].toString();
-    QString newLastName = data["new_last_name"].toString();
+    QString newLastName = data["new_value"].toString();
 
     if (username.isEmpty() || newLastName.isEmpty()) {
         throw UserException("Last Name fields cannot be empty!");
@@ -214,6 +212,7 @@ QJsonObject Account::editLastName(const QJsonObject& data) {
 }
 
 QJsonObject Account::getGameHistory(const QJsonObject& data) {
+
     QString username = data["username"].toString();
     if (username.isEmpty()) {
         throw UserException("Username cannot be empty for getting history!");

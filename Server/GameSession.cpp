@@ -605,7 +605,7 @@ void GameSession::evaluateRound() {
 
         if (roundWinner->getRoundsWon() == 2) {
             endGame(roundWinner);
-        } else if (m_currentRound == 3) {
+        } else if (m_currentRound == 5) {
             PlayerInGame* gameWinner = nullptr;
             int maxRoundsWon = -1;
             QList<PlayerInGame*> potentialWinners;
