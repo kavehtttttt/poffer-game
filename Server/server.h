@@ -4,6 +4,7 @@
 #include <QTcpServer>
 #include <QList>
 #include <QMap>
+#include <QNetworkInterface>
 #include "chanells.h"
 #include "Users.h"
 #include "Account.h"
@@ -16,9 +17,13 @@ class Server : public QTcpServer
 public:
     explicit Server(QObject *parent = nullptr);
     void startServer();
+    QString getServerIpAddress();
 
 protected:
     void incomingConnection(qintptr socketDescriptor) override;
+
+signals:
+    void serverIpAvailable(const QString& ipAddress);
 
 private slots:
     void handleMessage(chanells* source, QString msg);

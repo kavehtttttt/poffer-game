@@ -20,10 +20,29 @@ Server::Server(QObject *parent)
     gameManager = new GameManager(users, this);
 }
 
+QString Server::getServerIpAddress()
+{
+    QString ipAddress;
+    QList<QHostAddress> ipAddressesList = QNetworkInterface::allAddresses();
+    for (const QHostAddress& entry : ipAddressesList) {
+        if (entry != QHostAddress::LocalHost && entry.toIPv4Address()) {
+            ipAddress = entry.toString();
+            break;
+        }
+    }
+    if (ipAddress.isEmpty()) {
+        ipAddress = QHostAddress(QHostAddress::LocalHost).toString();
+    }
+    return ipAddress;
+}
+
 void Server::startServer()
 {
     if (listen(QHostAddress::Any, 8080)) {
         qDebug() << "Server started on port" << serverPort();
+        QString ipAddress = getServerIpAddress();
+        qDebug() << "Server IP Address:" << ipAddress;
+        emit serverIpAvailable(ipAddress);
     } else {
         qDebug() << "Failed to start server";
     }
@@ -248,6 +267,28 @@ void Server::handleMessage(chanells* source, QString msg)
                 errorMsg["status"] = "error";
                 errorMsg["message"] = "Resume request failed: Not in an active game session.";
                 source->sendMessage(QString::fromUtf8(QJsonDocument(errorMsg).toJson(QJsonDocument::Compact)));
+            }
+            return;
+        }else if (type == "Player_Exit_Request") {
+            QString username = obj["username"].toString();
+            bool handled = false;
+            for (GameSession* session : gameManager->getActiveGameSessions()) {
+                PlayerInGame* player = session->getPlayersMap().value(username, nullptr);
+                if (player) {
+                    session->handlePlayerExit(player);
+                    handled = true;
+                    break;
+                }
+            }
+            if (!handled) {
+                qWarning() << "Player_Exit_Request from" << username << "not handled: Not in an active game session.";
+                response = QJsonObject{
+                    {"type", "Player_Exit_Response"},
+                    {"status", "error"},
+                    {"message", "Could not exit: Not in an active game session."}
+                };
+                QJsonDocument docRes(response);
+                source->sendMessage(QString::fromUtf8(docRes.toJson(QJsonDocument::Compact)));
             }
             return;
         }
